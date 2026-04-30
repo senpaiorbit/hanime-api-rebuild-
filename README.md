@@ -1,186 +1,231 @@
-# HiAnime Scraper API
+# HiAnime API — Vercel Edge Scraper
 
-A **zero-dependency, single-file** REST API for [hianime.to](https://hianime.to) built with Node.js and deployed on **Vercel** (serverless, no cold-start framework overhead).
-
-Powered by the [`aniwatch`](https://github.com/ghoshRitesh12/aniwatch) scraping library.
+A clean, zero-server-overhead REST API for [hianime.re](https://hianime.re), built with **Node.js + Vercel Edge Runtime**.  
+Every endpoint runs at the edge — lightweight fetches and HTML parsing only, no heavy compute.
 
 ---
 
-## 🚀 Deploy to Vercel
+## Project Structure
+
+```
+hianime-api/
+├── config/
+│   ├── config.js        — constants, TTLs, valid category/server lists
+│   └── baseurl.js       — primary (hianime.re) + backup (aniwatch.re) domain URLs
+├── util/
+│   ├── scraper.js       — all scraping logic (cheerio)
+│   ├── format.js        — HTML → plain-object formatters
+│   └── helper.js        — fetch wrappers, response builders, text utils
+├── api/
+│   ├── home.js
+│   ├── search.js
+│   ├── search-suggestion.js
+│   ├── anime.js
+│   ├── episodes.js
+│   ├── servers.js
+│   ├── sources.js
+│   ├── category.js
+│   ├── genre.js
+│   ├── producer.js
+│   ├── azlist.js
+│   ├── schedule.js
+│   └── qtip.js
+├── vercel.json
+└── package.json
+```
+
+---
+
+## Deploy
 
 ```bash
-# 1. Clone / download this repo
-# 2. Install deps
 npm install
-
-# 3. Deploy
-npx vercel deploy
+npx vercel --prod
 ```
-
-Or click the button below to one-click deploy:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
 ---
 
-## 📡 Endpoints
+## Endpoints
 
-All endpoints return:
+All responses follow:
 ```json
-{
-  "success": true,
-  "data": { ... }
-}
-```
-
-On error:
-```json
-{
-  "success": false,
-  "error": "error message"
-}
+{ "status": 200, "data": { ... } }
+// or on error:
+{ "status": 4xx|5xx, "error": "message", "data": null }
 ```
 
 ---
 
 ### `GET /api/home`
-Returns the homepage data — spotlight anime, trending, latest episodes, top-airing, genres, etc.
+Returns the full home page — spotlight slider, trending, latest episodes, top-10 (today/week/month), and genre list.
+
+**No params required.**
+
+```json
+{
+  "spotlight": [ { "rank": 1, "id": "one-piece-100", "name": "One Piece", ... } ],
+  "trending":  [ { "rank": 1, "id": "...", "name": "...", "poster": "..." } ],
+  "latestEpisode": [ { "id": "...", "name": "...", "episodes": { "sub": 5, "dub": 3 } } ],
+  "topUpcoming": [ ... ],
+  "top10": { "today": [...], "week": [...], "month": [...] },
+  "genres": ["Action", "Adventure", ...]
+}
+```
 
 ---
 
 ### `GET /api/search`
-| Query param | Required | Description |
-|---|---|---|
-| `q` | ✅ | Search query |
-| `page` | ❌ | Page number (default: 1) |
-| any filter | ❌ | Extra filter params passed to scraper |
-
-**Example:** `/api/search?q=one+piece&page=1`
-
----
-
-### `GET /api/search/suggestion`
-| Query param | Required | Description |
-|---|---|---|
-| `q` | ✅ | Partial query string for autocomplete |
-
-**Example:** `/api/search/suggestion?q=naruto`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `q` | string | ✅ | Search keyword |
+| `page` | number | — | Default: 1 |
+| `type` | string | — | tv \| movie \| ova \| ona \| special \| music |
+| `status` | string | — | airing \| complete \| upcoming |
+| `rated` | string | — | g \| pg \| pg-13 \| r \| r+ \| rx |
+| `season` | string | — | spring \| summer \| fall \| winter |
+| `language` | string | — | sub \| dub \| sub-&-dub |
+| `genres` | string | — | Comma-separated genre slugs |
+| `sort` | string | — | recently-added \| score \| default … |
 
 ---
 
-### `GET /api/anime/:id`
-Full anime info by slug-ID.
+### `GET /api/search-suggestion`
+| Param | Type | Required |
+|-------|------|----------|
+| `q` | string | ✅ |
 
-**Example:** `/api/anime/one-piece-odmau`
-
----
-
-### `GET /api/anime/:id/episodes`
-Full episode list for an anime.
-
-**Example:** `/api/anime/one-piece-odmau/episodes`
+Returns quick match suggestions from the hianime AJAX endpoint.
 
 ---
 
-### `GET /api/anime/:id/next-episode-schedule`
-Next episode air date & time.
+### `GET /api/anime`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | ✅ | Anime slug e.g. `bleach-yaa9n` |
 
-**Example:** `/api/anime/one-piece-odmau/next-episode-schedule`
-
----
-
-### `GET /api/episode/servers`
-| Query param | Required | Description |
-|---|---|---|
-| `animeEpisodeId` | ✅ | Episode ID e.g. `one-piece-odmau?ep=12345` |
-
-**Example:** `/api/episode/servers?animeEpisodeId=one-piece-odmau?ep=12345`
+Returns full metadata: name, jname, poster, description, type, status, score, genres, studios, producers, episodes counts, related anime.
 
 ---
 
-### `GET /api/episode/sources`
-| Query param | Required | Description |
-|---|---|---|
-| `animeEpisodeId` | ✅ | Episode ID |
-| `server` | ❌ | Server name (default: `vidstreaming`) |
-| `category` | ❌ | `sub` \| `dub` \| `raw` (default: `sub`) |
+### `GET /api/episodes`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | ✅ | Anime slug e.g. `bleach-yaa9n` |
 
-**Example:** `/api/episode/sources?animeEpisodeId=one-piece-odmau?ep=12345&server=vidstreaming&category=sub`
+Returns total episode count + episode list with numbers, IDs, titles, and filler flags.
 
-Response includes `sources` (M3U8 URLs), `subtitles`, `headers`, `intro`, `outro`.
-
----
-
-### `GET /api/category/:name`
-| URL param | Options |
-|---|---|
-| `name` | `most-popular`, `top-airing`, `most-favorite`, `completed`, `recently-updated`, `recently-added`, `top-upcoming`, `subbed-anime`, `dubbed-anime`, `latest-completed`, `trending` |
-
-| Query param | Description |
-|---|---|
-| `page` | Page number (default: 1) |
-
-**Example:** `/api/category/top-airing?page=1`
+```json
+{
+  "animeId": "12345",
+  "totalEpisodes": 366,
+  "episodes": [
+    { "number": 1, "id": "1234", "slug": "The Day I Became a Shinigami", "isFiller": false }
+  ]
+}
+```
 
 ---
 
-### `GET /api/genre/:name`
-| URL param | Example values |
-|---|---|
-| `name` | `action`, `romance`, `fantasy`, `isekai`, `shounen` … |
+### `GET /api/servers`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `episodeId` | string | ✅ | Numeric episode ID from `/api/episodes` |
 
-**Example:** `/api/genre/action?page=2`
+Returns sub / dub / raw server lists.
+
+```json
+{
+  "episodeId": "230",
+  "sub":  [ { "serverId": "56789", "serverName": "HD-1", "type": "sub" } ],
+  "dub":  [ ... ],
+  "raw":  [ ... ]
+}
+```
 
 ---
 
-### `GET /api/producer/:name`
-**Example:** `/api/producer/mappa?page=1`
+### `GET /api/sources`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `serverId` | string | ✅ | `serverId` from `/api/servers` |
+
+Returns the embed/stream link for the chosen server.
+
+```json
+{ "serverId": "56789", "type": "iframe", "server": 1, "link": "https://..." }
+```
+
+> **Note:** The `link` is typically an embed URL (megacloud, vidstreaming, etc.) that requires client-side decryption/resolution.
 
 ---
 
-### `GET /api/azlist/:sortOption`
-| URL param | Options |
-|---|---|
-| `sortOption` | `all`, `other`, `a`, `b`, `c` … `z`, `0-9` |
+### `GET /api/category`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Category slug |
+| `page` | number | — | Default: 1 |
 
-**Example:** `/api/azlist/all?page=1`
+Valid `name` values: `subbed-anime`, `dubbed-anime`, `recently-added`, `most-popular`, `most-favorite`, `completed`, `recently-updated`, `top-airing`, `top-upcoming`, `movie`, `special`, `ova`, `ona`, `tv`, `latest-episode`
+
+---
+
+### `GET /api/genre`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Genre slug e.g. `action`, `romance`, `isekai` |
+| `page` | number | — | Default: 1 |
+
+---
+
+### `GET /api/producer`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Producer slug e.g. `toei-animation` |
+| `page` | number | — | Default: 1 |
+
+---
+
+### `GET /api/azlist`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sort` | string | — | `all` \| `other` \| `0-9` \| `a`…`z` (default: `all`) |
+| `page` | number | — | Default: 1 |
 
 ---
 
 ### `GET /api/schedule`
-| Query param | Required | Description |
-|---|---|---|
-| `date` | ✅ | `YYYY-MM-DD` |
-| `tzOffset` | ❌ | Timezone offset in minutes (default: `-330` = IST) |
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `date` | string | — | `YYYY-MM-DD` format (default: today) |
 
-**Example:** `/api/schedule?date=2025-04-29&tzOffset=0`
-
----
-
-### `GET /api/qtip/:animeId`
-Quick popup info for hover cards.
-
-**Example:** `/api/qtip/one-piece-odmau`
+Returns the airing schedule for a given date.
 
 ---
 
-## 🗂 Project Structure
+### `GET /api/qtip`
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | ✅ | Numeric anime ID from `data-tip` attributes in HTML |
+
+Returns the lightweight hover-card: name, poster, type, episodes, score.
+
+---
+
+## Typical Usage Flow
 
 ```
-hianime-api/
-├── api/
-│   └── index.js        ← Single Vercel serverless function
-├── .env.example        ← Environment variable template
-├── .gitignore
-├── package.json
-├── vercel.json         ← Vercel config (rewrites + headers)
-└── README.md
+1. GET /api/home                          → pick an anime from spotlight
+2. GET /api/anime?id=bleach-yaa9n         → get full info
+3. GET /api/episodes?id=bleach-yaa9n      → list all episodes
+4. GET /api/servers?episodeId=230         → pick sub/dub + server
+5. GET /api/sources?serverId=56789        → get stream embed link
 ```
 
-## ⚙️ How It Works
+---
 
-All routes rewrite to `api/index.js` via `vercel.json`. The handler parses the path manually — no framework, no overhead. The `aniwatch` package handles all scraping against hianime.to.
+## Switching to Backup Domain
 
-## 📝 License
-
-MIT
+Open `config/baseurl.js` and change:
+```js
+const BASE = PRIMARY;  // → change to BACKUP
+```

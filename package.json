@@ -1,22 +1,16 @@
 {
   "name": "hianime-api",
   "version": "1.0.0",
-  "description": "Simplified HiAnime scraper API for Vercel Edge / Node.js",
-  "private": true,
+  "description": "Vercel Edge scraper API for hianime.re",
   "type": "module",
-  "scripts": {
-    "dev": "vercel dev",
-    "build": "echo 'No build step needed'",
-    "vercel-build": "echo 'ok'"
-  },
-  "dependencies": {
-    "aniwatch": "^2.27.0"
-  },
-  "devDependencies": {
-    "@vercel/node": "^5.1.0",
-    "typescript": "^5.8.3"
-  },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
   }
 }
