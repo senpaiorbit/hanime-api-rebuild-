@@ -1,6 +1,6 @@
 // ─── Helper Utilities ─────────────────────────────────────────────────────────
 
-import { CONFIG } from "../config/config.js";
+import { CONFIG } from "../../config/config.js";
 
 /**
  * Fetch a page's HTML from hianime with browser-like headers.

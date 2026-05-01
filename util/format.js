@@ -1,8 +1,8 @@
 // ─── Format / Transform Helpers ───────────────────────────────────────────────
 // These functions receive a Cheerio root ($) + element and return plain objects.
 
-import { clean, extractId, extractWatchId, parseTicks } from "./helper.js";
-import { BASE_URL } from "../config/baseurl.js";
+import { clean, extractId, extractWatchId, parseTicks } from "../../util/helper.js";
+import { BASE_URL } from "../../config/baseurl.js";
 
 // ── Film Card (used on home, search, category, genre, etc.) ───────────────────
 
@@ -18,6 +18,16 @@ export function formatFilmCard($item, $) {
   const id      = extractId(href);
   const watchHref = poster.find("a").first().attr("href") || "";
 
+  // Fix: prevent duplicate base URL if watchHref is already absolute
+  let watchUrl = null;
+  if (watchHref) {
+    if (watchHref.startsWith("http")) {
+      watchUrl = watchHref;
+    } else {
+      watchUrl = `${BASE_URL}${watchHref}`;
+    }
+  }
+
   return {
     id,
     name:      clean(anchor.text()),
@@ -27,7 +37,7 @@ export function formatFilmCard($item, $) {
     duration:  clean(detail.find(".fdi-duration").text()) || null,
     rating:    clean(poster.find(".tick-pg").text()) || null,
     episodes:  parseTicks(poster, $),
-    watchUrl:  watchHref ? `${BASE_URL}${watchHref}` : null,
+    watchUrl,
   };
 }
 
