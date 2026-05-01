@@ -60,7 +60,7 @@
 - [Installation](#installation)
     - [Local](#local)
     - [Vercel](#vercel)
-- [Configuration](#️configuration)
+- [Configuration](#%EF%B8%8Fconfiguration)
     - [Environment Variables](#environment-variables)
 - [Host your instance](#host-your-instance)
     - [Vercel](#vercel)
