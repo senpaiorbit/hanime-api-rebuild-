@@ -2,7 +2,7 @@
 // All scraping functions. Each returns a plain JS object ready to be JSON-serialised.
 
 import * as cheerio from "cheerio";
-import { fetchPage, fetchJSON, clean, extractId, extractWatchId } from "../../util/helper.js";
+import { fetchPage, fetchJSON, clean, extractId, extractWatchId } from "../util/helper.js";
 import {
   formatFilmCard,
   formatSpotlight,
@@ -12,8 +12,8 @@ import {
   formatServer,
   formatSearchSuggestion,
   parseTotalPages,
-} from "../../util/format.js";
-import { URLS } from "../../config/baseurl.js";
+} from "../util/format.js";
+import { URLS } from "../config/baseurl.js";
 
 // ── Home Page ─────────────────────────────────────────────────────────────────
 

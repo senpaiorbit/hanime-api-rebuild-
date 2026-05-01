@@ -1,8 +1,8 @@
 // ─── Format / Transform Helpers ───────────────────────────────────────────────
 // These functions receive a Cheerio root ($) + element and return plain objects.
 
-import { clean, extractId, extractWatchId, parseTicks } from "../../util/helper.js";
-import { BASE_URL } from "../../config/baseurl.js";
+import { clean, extractId, extractWatchId, parseTicks } from "../util/helper.js";
+import { BASE_URL } from "../config/baseurl.js";
 
 // ── Film Card (used on home, search, category, genre, etc.) ───────────────────
 
