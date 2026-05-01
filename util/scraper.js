@@ -1,4 +1,6 @@
 // ─── HiAnime Scraper ─────────────────────────────────────────────────────────
+// All scraping functions. Each returns a plain JS object ready to be JSON-serialised.
+
 import * as cheerio from "cheerio";
 import { fetchPage, fetchJSON, clean, extractId, extractWatchId } from "../util/helper.js";
 import {
@@ -14,26 +16,30 @@ import {
 import { URLS } from "../config/baseurl.js";
 
 // ── Home Page ─────────────────────────────────────────────────────────────────
+
 export async function scrapeHome() {
   const html = await fetchPage(URLS.home());
   const $ = cheerio.load(html);
-  
+
+  // Spotlight
   const spotlight = [];
   $(".swiper-slide .deslide-item").each((i, el) => {
     spotlight.push(formatSpotlight($(el), $, i + 1));
   });
-  
+
+  // Trending
   const trending = [];
   $(".anif-block-ul li").each((i, el) => {
     trending.push(formatTrendingItem($(el), $, i + 1));
   });
-  
+
+  // Helper to parse a grid section
   const parseSection = (selector) => {
     const list = [];
     $(selector).find(".flw-item").each((_, el) => list.push(formatFilmCard($(el), $)));
     return list;
   };
-  
+
   return {
     spotlight,
     trending,
@@ -47,6 +53,7 @@ export async function scrapeHome() {
     genres: scrapeGenreList($),
   };
 }
+
 function parseSideChart($, tabId) {
   const list = [];
   $(`#${tabId} li`).each((i, el) => {
@@ -74,93 +81,103 @@ function scrapeGenreList($) {
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
+
 export async function scrapeSearch(query, page = 1, filters = {}) {
   let url = URLS.search(query, page);
+  // Append extra filter params (type, status, season, etc.)
   for (const [k, v] of Object.entries(filters)) {
     if (v) url += `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
   }
-  
+
   const html = await fetchPage(url);
   const $ = cheerio.load(html);
+
   const animes = [];
   $(".flw-item").each((_, el) => animes.push(formatFilmCard($(el), $)));
-  
+
   const totalPages = parseTotalPages($);
   const totalCount = parseInt(
     clean($(".pre-pagination ~ .cat-heading").text()).replace(/\D/g, ""),
     10
   ) || animes.length;
-  
+
   return { query, page, totalPages, totalCount, animes };
 }
 
 // ── Search Suggestions ────────────────────────────────────────────────────────
+
 export async function scrapeSearchSuggestions(query) {
-  const data = await fetchJSON(URLS.searchSuggest(query));  const html = data.html || "";
+  const data = await fetchJSON(URLS.searchSuggest(query));
+  const html = data.html || "";
   const $ = cheerio.load(html);
+
   const suggestions = [];
-  
   $(".nav-item, li").each((_, el) => {
     const item = formatSearchSuggestion($(el), $);
     if (item.id) suggestions.push(item);
   });
-  
+
   return { query, suggestions };
 }
 
 // ── Anime Info ─────────────────────────────────────────────────────────────────
+
 export async function scrapeAnimeInfo(animeId) {
   const html = await fetchPage(URLS.animeInfo(animeId));
   const $ = cheerio.load(html);
   const info = formatAnimeInfo($, animeId);
-  
+
+  // Related / recommended animes shown on info page
   const related = [];
-  // Robust selector covering multiple hianime layout versions
-  $(
-    ".block_area_category .flw-item, " +
-    "#related-suggestion .flw-item, " +
-    ".block_area.block_area_category .film_list-wrap .flw-item, " +
-    ".block_area-content .flw-item"
-  ).each((_, el) => {
-    related.push(formatFilmCard($(el), $));
-  });
-  
+  $(".block_area_category .flw-item").each((_, el) =>
+    related.push(formatFilmCard($(el), $))
+  );
+
   return { anime: info, related };
 }
 
 // ── Episodes ──────────────────────────────────────────────────────────────────
+
 export async function scrapeEpisodes(animeId) {
+  // animeId here must be the numeric site ID, not the slug.
+  // The watch page embeds it as data-id on #main-wrapper.
+  // Callers should resolve it first via scrapeAnimeId().
   const data = await fetchJSON(URLS.episodes(animeId));
   const html = data.html || "";
   const $ = cheerio.load(html);
+
   const episodes = [];
-  
   $(".ssl-item").each((_, el) => {
     episodes.push(formatEpisode($(el), $));
   });
-  
+
   return { animeId, totalEpisodes: episodes.length, episodes };
 }
 
+/**
+ * Resolve the numeric anime ID from the slug by fetching the watch page.
+ */
 export async function scrapeAnimeNumericId(slug) {
   const html = await fetchPage(URLS.animeWatch(slug));
   const $ = cheerio.load(html);
-  const id = $("#main-wrapper").attr("data-id");  if (!id) throw new Error(`Could not resolve numeric ID for: ${slug}`);
+  const id = $("#main-wrapper").attr("data-id");
+  if (!id) throw new Error(`Could not resolve numeric ID for: ${slug}`);
   return id;
 }
 
 // ── Episode Servers ───────────────────────────────────────────────────────────
+
 export async function scrapeEpisodeServers(episodeId) {
   const data = await fetchJSON(URLS.episodeServers(episodeId));
   const html = data.html || "";
   const $ = cheerio.load(html);
-  
+
   const parse = (selector) => {
     const list = [];
     $(selector).each((_, el) => list.push(formatServer($(el), $)));
     return list;
   };
-  
+
   return {
     episodeId,
     sub:  parse(".ps_-block.ps_-block-sub .server-item"),
@@ -170,8 +187,10 @@ export async function scrapeEpisodeServers(episodeId) {
 }
 
 // ── Episode Sources ───────────────────────────────────────────────────────────
+
 export async function scrapeEpisodeSources(serverId) {
   const data = await fetchJSON(URLS.episodeSources(serverId));
+  // Response shape: { type, link, server } — pass through directly
   return {
     serverId,
     type:   data.type   || null,
@@ -181,12 +200,14 @@ export async function scrapeEpisodeSources(serverId) {
 }
 
 // ── Category ──────────────────────────────────────────────────────────────────
+
 export async function scrapeCategory(category, page = 1) {
   const html = await fetchPage(URLS.category(category, page));
   const $ = cheerio.load(html);
+
   const animes = [];
   $(".flw-item").each((_, el) => animes.push(formatFilmCard($(el), $)));
-  
+
   return {
     category,
     page,
@@ -194,13 +215,16 @@ export async function scrapeCategory(category, page = 1) {
     animes,
   };
 }
+
 // ── Genre ─────────────────────────────────────────────────────────────────────
+
 export async function scrapeGenre(genre, page = 1) {
   const html = await fetchPage(URLS.genre(genre, page));
   const $ = cheerio.load(html);
+
   const animes = [];
   $(".flw-item").each((_, el) => animes.push(formatFilmCard($(el), $)));
-  
+
   return {
     genre,
     page,
@@ -210,12 +234,14 @@ export async function scrapeGenre(genre, page = 1) {
 }
 
 // ── Producer ──────────────────────────────────────────────────────────────────
+
 export async function scrapeProducer(producer, page = 1) {
   const html = await fetchPage(URLS.producer(producer, page));
   const $ = cheerio.load(html);
+
   const animes = [];
   $(".flw-item").each((_, el) => animes.push(formatFilmCard($(el), $)));
-  
+
   return {
     producer,
     page,
@@ -225,12 +251,14 @@ export async function scrapeProducer(producer, page = 1) {
 }
 
 // ── AZ List ───────────────────────────────────────────────────────────────────
+
 export async function scrapeAZList(sortOption = "all", page = 1) {
   const html = await fetchPage(URLS.azList(sortOption, page));
   const $ = cheerio.load(html);
+
   const animes = [];
   $(".flw-item").each((_, el) => animes.push(formatFilmCard($(el), $)));
-  
+
   return {
     sortOption,
     page,
@@ -240,29 +268,31 @@ export async function scrapeAZList(sortOption = "all", page = 1) {
 }
 
 // ── Schedule ──────────────────────────────────────────────────────────────────
+
 export async function scrapeSchedule(date) {
   const data = await fetchJSON(URLS.schedule(date));
   const html = data.html || "";
-  const $ = cheerio.load(html);  const scheduled = [];
-  
+  const $ = cheerio.load(html);
+
+  const scheduled = [];
   $(".ssl-item, li[data-id]").each((_, el) => {
-    scheduled.push({
-      id:      $(el).attr("data-id") || null,
-      name:    clean($(el).find(".film-name, .name").text()),
-      time:    clean($(el).find(".time, .ani-detail").text()),
-      airingAt: $(el).attr("data-airing-at") || null,
-    });
+    const id   = $(el).attr("data-id") || null;
+    const time = clean($(el).find(".time, .ani-detail").text());
+    const name = clean($(el).find(".film-name, .name").text());
+    const airingAt = $(el).attr("data-airing-at") || null;
+    scheduled.push({ id, name, time, airingAt });
   });
-  
+
   return { date, scheduled };
 }
 
 // ── Qtip (hover info) ─────────────────────────────────────────────────────────
+
 export async function scrapeQtip(animeId) {
   const data = await fetchJSON(URLS.qtip(animeId));
   const html = data.html || "";
   const $ = cheerio.load(html);
-  
+
   return {
     animeId,
     name:    clean($(".film-name, .d-title").first().text()),
