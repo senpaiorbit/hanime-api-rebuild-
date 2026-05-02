@@ -140,9 +140,20 @@ export function formatAnimeInfo($, id) {
   // --- type: it's the first <span class="item"> inside .film-stats .tick (after the tick-items)
   const type = clean($(".film-stats .tick .item").first().text()) || null;
 
-  // --- episodes: strip icon element text before parsing number
-  const subText = $(".anisc-content .tick-sub").first().clone().children("i").remove().end().text();
-  const dubText = $(".anisc-content .tick-dub").first().clone().children("i").remove().end().text();
+  // Correct parent class is "anis-content" (not "anisc-content")
+  // scope all tick selectors inside #ani_detail to avoid matching sidebar/trending cards
+  const tickScope = $("#ani_detail .film-stats .tick");
+
+  // --- episodes: strip <i> icon child, then parse the number
+  const subText = tickScope.find(".tick-sub").first().clone().children("i").remove().end().text();
+  const dubText = tickScope.find(".tick-dub").first().clone().children("i").remove().end().text();
+
+  // --- rating: "?" means unknown — treat as null
+  const ratingRaw = clean(tickScope.find(".tick-pg").first().text());
+  const rating = (ratingRaw && ratingRaw !== "?") ? ratingRaw : null;
+
+  // --- quality: straight text, no icons
+  const quality = clean(tickScope.find(".tick-quality").first().text()) || null;
 
   return {
     id,
@@ -152,8 +163,8 @@ export function formatAnimeInfo($, id) {
     description,
     type,
     status:      get("Status"),
-    rating:      clean($(".anisc-content .tick-pg").first().text()) || null,
-    quality:     clean($(".anisc-content .tick-quality").first().text()) || null,
+    rating,
+    quality,
     episodes: {
       sub: parseInt(subText.trim(), 10) || null,
       dub: parseInt(dubText.trim(), 10) || null,
