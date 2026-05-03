@@ -5,11 +5,6 @@ import { clean, extractId, extractWatchId, parseTicks } from "../util/helper.js"
 import { BASE_URL } from "../config/baseurl.js";
 
 // ── Film Card (used on home grids: Latest Episode, Top Upcoming, Search…) ────
-// HTML structure:
-//   .flw-item > .film-poster (img[data-src], .tick ltr/rtl, a.film-poster-ahref)
-//              + .film-detail (h3.film-name > a.d-title[href][data-jp],
-//                              .fd-infor > .fdi-item, .fdi-duration)
-
 export function formatFilmCard($item, $) {
   const poster  = $item.find(".film-poster");
   const detail  = $item.find(".film-detail");
@@ -17,7 +12,6 @@ export function formatFilmCard($item, $) {
   const href    = anchor.attr("href") || "";
   const id      = extractId(href);
 
-  // Watch URL: the poster anchor wrapping the image goes to /watch/…
   const watchHref = poster.find("a").first().attr("href") || "";
   const watchUrl  = watchHref
     ? (watchHref.startsWith("http") ? watchHref : `${BASE_URL}${watchHref}`)
@@ -37,17 +31,11 @@ export function formatFilmCard($item, $) {
 }
 
 // ── Spotlight / Hero Slider ────────────────────────────────────────────────────
-// HTML: .deslide-item > .deslide-cover (.deslide-cover-img > img[data-src])
-//                     + .deslide-item-content (.desi-sub-text, .desi-head-title[data-jp],
-//                       .sc-detail > .scd-item[], .desi-description, .desi-buttons > a[href])
-
 export function formatSpotlight($item, $, rank) {
-  // "Watch Now" is the first <a> inside .desi-buttons
   const watchAnchor = $item.find(".desi-buttons a").first();
   const href        = watchAnchor.attr("href") || "";
   const nameEl      = $item.find(".desi-head-title");
 
-  // otherInfo = all .scd-item texts (type, duration, quality, sub/dub counts…)
   const otherInfo = [];
   $item.find(".sc-detail .scd-item").each((_, el) => {
     const t = clean($(el).text());
@@ -70,15 +58,9 @@ export function formatSpotlight($item, $, rank) {
 }
 
 // ── Trending Carousel Item ─────────────────────────────────────────────────────
-// HTML: #trending-home .swiper-slide .inner
-//         > .number (span rank + div.film-title.d-title[data-jp])
-//         + a.film-poster[href] > img[src]  (note: src not data-src in trending)
-
 export function formatTrendingItem($item, $, rank) {
-  // The poster anchor is <a class="film-poster" href="/watch/…">
   const anchor  = $item.find("a.film-poster, .film-poster a").first();
   const href    = anchor.attr("href") || "";
-  // Title is in .film-title (carousel) — fall back to .film-name for other usages
   const nameEl  = $item.find(".film-title, .film-name").first();
 
   return {
@@ -91,24 +73,14 @@ export function formatTrendingItem($item, $, rank) {
 }
 
 // ── Anif-Block List Item (Popular / Most Favorite / Top Airing / Completed) ──
-// HTML: li > .film-poster[data-tip] > a[href] > img[data-src]
-//          + .film-detail > h3.film-name > a.d-title[href][data-jp]
-//                         + .fd-infor > .fdi-item (type)
-//                                    + .tick-item.tick-sub (e.g. "12/ 4")
-//                                    + .tick-item.tick-dub (e.g. "?/ 1")
-//                                    + .fdi-duration
-
 export function formatAnifBlockItem($item, $) {
   const posterEl = $item.find(".film-poster");
   const anchor   = $item.find("h3.film-name a.d-title, .film-name a").first();
   const href     = anchor.attr("href") || "";
   const id       = extractId(href);
 
-  // Sub/dub texts are like "12/ 4" (total_eps/ new_eps) or "?/ 3"
-  // We want the total count (first number before "/")
   const parseTick = (selector) => {
     const raw = $item.find(selector).clone().children("i").remove().end().text().trim();
-    // e.g. "12/ 4" → split on "/" → "12" → parseInt
     const first = raw.split("/")[0].replace(/\D/g, "");
     return parseInt(first, 10) || null;
   };
@@ -126,12 +98,7 @@ export function formatAnifBlockItem($item, $) {
   };
 }
 
-// ── Top 10 Sidebar Item (Most Viewed — Day / Week / Month tabs) ───────────────
-// HTML: li > .film-number > span (rank)
-//          + .film-poster > img[data-src]   (no anchor — poster is not linked)
-//          + .film-detail > h3.film-name > a[href][data-jp]
-//                         + .fd-infor > .tick > .tick-sub, .tick-dub, .tick-eps
-
+// ── Top 10 Sidebar Item ───────────────────────────────────────────────────────
 export function formatTop10Item($item, $, rank) {
   const anchor = $item.find(".film-detail .film-name a").first();
   const href   = anchor.attr("href") || "";
@@ -153,20 +120,29 @@ export function formatTop10Item($item, $, rank) {
   };
 }
 
-// ── Most Popular Anime (sidebar trending list on anime detail page) ────────────
+// ── Most Popular Anime (trending sidebar on anime detail page) ────────────────
+// HTML (from actual page):
+//   .cbox-realtime ul.ulclear > li
+//     > .film-poster[data-tip] > img[data-src]
+//     + .film-detail > h3.film-name > a.d-title[href][data-jp]
+//                    + .fd-infor > span.fdi-item (type) + span.dot
+//                                + span.fdi-item ("12 Eps") + span.dot
+//                                + span.fdi-item.fdi-duration ("24 MIN min")
 
 export function formatMostPopular($item, $) {
   const anchor = $item.find("a.d-title, .film-name a").first();
   const href   = anchor.attr("href") || "";
   const poster = $item.find("img").attr("data-src") || $item.find("img").attr("src") || null;
 
-  const epsText = clean($item.find(".fdi-item").eq(1).text()).replace(/[^\d]/g, "");
-  const eps     = parseInt(epsText, 10) || null;
+  // Episode count: second .fdi-item is "N Eps"
+  const epsRaw = clean($item.find(".fdi-item").eq(1).text()).replace(/[^\d]/g, "");
+  const eps    = parseInt(epsRaw, 10) || null;
 
-  const subRaw = $item.find(".tick-sub").first().clone().children("i").remove().end().text();
-  const dubRaw = $item.find(".tick-dub").first().clone().children("i").remove().end().text();
-  const sub    = parseInt(subRaw.trim(), 10) || eps || null;
-  const dub    = parseInt(dubRaw.trim(), 10) || null;
+  // sub/dub tick counts (icon + number in same span)
+  const subRaw = $item.find(".tick-sub").first().clone().children("i").remove().end().text().trim();
+  const dubRaw = $item.find(".tick-dub").first().clone().children("i").remove().end().text().trim();
+  const sub    = parseInt(subRaw, 10) || eps || null;
+  const dub    = parseInt(dubRaw, 10) || null;
 
   return {
     id:     extractId(href),
@@ -179,15 +155,43 @@ export function formatMostPopular($item, $) {
 }
 
 // ── Anime Info Page ────────────────────────────────────────────────────────────
+// HTML structure (from anime.html):
+//
+//   .anis-content
+//     > .anisc-poster > .film-poster > img.film-poster-img[src]   ← poster
+//     + .anisc-detail
+//         > h2.film-name.dynamic-name[data-jname]                 ← name / jname
+//         + .film-stats > .tick
+//             > .tick-item.tick-pg                                 ← rating "PG 13"
+//             + .tick-item.tick-quality                            ← quality "HD"
+//             + .tick-item.tick-sub > i + " N"                    ← sub ep count
+//             + .tick-item.tick-dub > i + " N"                    ← dub ep count
+//             + span.dot + span.item                              ← type "TV"
+//             + span.dot + span.item                              ← duration "24m"
+//         + .film-description > .text                             ← description
+//
+//   .anisc-info-wrap > .anisc-info
+//     > .item .item-head "Japanese:" + .name                      ← jname fallback
+//     + .item .item-head "Aired:"    + .name                      ← aired
+//     + .item .item-head "Premiered:" + a.name                    ← premiered
+//     + .item .item-head "Duration:" + .name                      ← duration
+//     + .item .item-head "Status:"   + a.name                     ← status
+//     + .item .item-head "MAL Score:" + .name                     ← malscore
+//     + .item .item-head "Genres:"   + [a,a,…]                   ← genres[]
+//     + .item .item-head "Studios:"  + [a,a,…]                   ← studios[]
+//     + .item .item-head "Producers:" + [a,a,…]                  ← producers[]
 
 export function formatAnimeInfo($, id) {
+  // ── Row reader helpers ─────────────────────────────────────────────────────
   const get = (head) => {
     let val = null;
     $(".anisc-info .item").each((_, el) => {
-      if ($(el).find(".item-head").text().trim().startsWith(head)) {
-        const byName = $(el).find(".name").first().text();
-        const byText = $(el).find(".text").first().text();
-        val = clean(byName || byText) || null;
+      const headText = $(el).find(".item-head").text().trim().toLowerCase();
+      if (headText.startsWith(head.toLowerCase())) {
+        const byName = clean($(el).find(".name").first().text());
+        const byLink = clean($(el).find("a").first().text());
+        const byText = clean($(el).find(".text").first().text());
+        val = byName || byLink || byText || null;
       }
     });
     return val;
@@ -196,60 +200,109 @@ export function formatAnimeInfo($, id) {
   const getList = (head) => {
     const items = [];
     $(".anisc-info .item").each((_, el) => {
-      if ($(el).find(".item-head").text().trim().startsWith(head)) {
+      const headText = $(el).find(".item-head").text().trim().toLowerCase();
+      if (headText.startsWith(head.toLowerCase())) {
         $(el).find("a").each((__, a) => {
           const t = clean($(a).text());
           if (t) items.push(t);
         });
+        // Some rows use bare .name spans instead of <a>
+        if (!items.length) {
+          $(el).find(".name").each((__, n) => {
+            const t = clean($(n).text());
+            if (t) items.push(t);
+          });
+        }
       }
     });
     return items;
   };
 
-  const nameEl   = $(".anisc-detail .film-name");
-  const statsEl  = $(".anisc-detail .film-stats");
+  // ── Name & jname ───────────────────────────────────────────────────────────
+  const nameEl = $(".anisc-detail .film-name, .anisc-detail h2.film-name").first();
+  const name   = clean(nameEl.text()) || null;
+  // data-jname is on the element (hianime uses data-jname, older pages data-jp)
+  const jname  = nameEl.attr("data-jname") || nameEl.attr("data-jp") || null;
+
+  // ── Stats from .film-stats .tick ───────────────────────────────────────────
+  const statsEl = $(".anisc-detail .film-stats .tick");
+
+  const rating  = clean(statsEl.find(".tick-pg").text()) || null;
+  const quality = clean(statsEl.find(".tick-quality").text()) || null;
+
+  // Strip the <i> icon child before reading the text number
+  const subEps = parseInt(
+    statsEl.find(".tick-sub").clone().children("i").remove().end().text().trim(), 10
+  ) || null;
+  const dubEps = parseInt(
+    statsEl.find(".tick-dub").clone().children("i").remove().end().text().trim(), 10
+  ) || null;
+
+  // span.item nodes carry type + duration (after the dots)
+  const itemSpans = [];
+  statsEl.find("span.item").each((_, el) => {
+    const t = clean($(el).text());
+    if (t) itemSpans.push(t);
+  });
+  const statType     = itemSpans[0] || null;
+  const statDuration = itemSpans[1] || get("Duration") || null;
+
+  // ── Poster ─────────────────────────────────────────────────────────────────
+  // The page has img.film-poster-img with src= (not lazy-loaded on detail page)
+  const poster =
+    $(".anis-content .film-poster img").attr("data-src") ||
+    $(".anis-content .film-poster img").attr("src") ||
+    $(".anisc-poster img").attr("data-src") ||
+    $(".anisc-poster img").attr("src") ||
+    null;
+
+  // ── Description ────────────────────────────────────────────────────────────
+  const description = clean($(".film-description .text").text()) || null;
 
   const info = {
     id,
-    name:        clean(nameEl.text()),
-    jname:       nameEl.attr("data-jp") || null,
-    poster:      $(".anis-content .film-poster img").attr("data-src") ||
-                 $(".anis-content .film-poster img").attr("src") || null,
-    description: clean($(".film-description .text").text()),
+    name,
+    jname,
+    poster,
+    description,
     stats: {
-      rating:   clean(statsEl.find(".tick-pg, .item.item-rating span.film-badge").text()) || null,
-      quality:  clean(statsEl.find(".tick-quality, .quality").text()) || null,
+      rating,
+      quality,
       episodes: {
-        sub: parseInt(statsEl.find(".tick-sub").text(), 10) || null,
-        dub: parseInt(statsEl.find(".tick-dub").text(), 10) || null,
+        sub: subEps,
+        dub: dubEps,
       },
-      type:     clean(statsEl.find(".item.item-quality, span.item:not(.item-rating):not(.item-quality)").last().text()) || null,
-      duration: get("Duration"),
+      type:     statType,
+      duration: statDuration,
     },
+    // Filled later by scraper AJAX calls
+    promotionalVideos:   [],
+    characterVoiceActor: [],
   };
 
   const moreInfo = {
-    aired:       get("Aired"),
-    premiered:   get("Premiered"),
-    duration:    get("Duration"),
-    status:      get("Status"),
-    malscore:    get("MAL Score"),
-    genres:      getList("Genre"),
-    studios:     getList("Studio"),
-    producers:   getList("Producer"),
+    aired:     get("Aired") || null,
+    premiered: get("Premiered") || null,
+    duration:  get("Duration") || null,
+    status:    get("Status") || null,
+    malscore:  get("MAL Score") || null,
+    genres:    getList("Genre"),
+    studios:   getList("Studio"),
+    producers: getList("Producer"),
   };
 
-  // Seasons on the main page (if present)
+  // ── Seasons embedded on the page (.os-list .os-item) ──────────────────────
   const seasons = [];
-  $(".os-list .os-item").each((_, el) => {
-    const a    = $(el).find("a").first();
+  $(".os-list .os-item, .os-list a.os-item").each((_, el) => {
+    const $el  = $(el);
+    const a    = $el.is("a") ? $el : $el.find("a").first();
     const href = a.attr("href") || "";
     seasons.push({
       id:        extractId(href),
-      name:      clean($(el).find(".title, .name").text()) || clean(a.text()),
+      name:      clean($el.find(".title, .name").text()) || clean(a.text()) || null,
       title:     a.attr("title") || clean(a.text()) || null,
-      poster:    $(el).find("img").attr("data-src") || $(el).find("img").attr("src") || null,
-      isCurrent: $(el).hasClass("active") || $(el).hasClass("selected"),
+      poster:    $el.find("img").attr("data-src") || $el.find("img").attr("src") || null,
+      isCurrent: $el.hasClass("active") || $el.hasClass("selected"),
     });
   });
 
@@ -257,40 +310,55 @@ export function formatAnimeInfo($, id) {
 }
 
 // ── Recommended Anime ─────────────────────────────────────────────────────────
+// Spec: { id, name, poster, duration, type, rating, episodes: { sub, dub } }
 
 export function formatRecommendedAnime($item, $) {
-  const poster  = $item.find(".film-poster");
-  const detail  = $item.find(".film-detail");
-  const anchor  = detail.find("a.d-title").first();
-  const href    = anchor.attr("href") || "";
+  const poster = $item.find(".film-poster");
+  const detail = $item.find(".film-detail");
+  const anchor = detail.find("a.d-title").first();
+  const href   = anchor.attr("href") || "";
+
+  const subRaw = $item.find(".tick-sub").clone().children("i").remove().end().text().trim();
+  const dubRaw = $item.find(".tick-dub").clone().children("i").remove().end().text().trim();
 
   return {
-    id:     extractId(href),
-    name:   clean(anchor.text()),
-    jname:  anchor.attr("data-jp") || null,
-    poster: poster.find("img").attr("data-src") || poster.find("img").attr("src") || null,
-    type:   clean(detail.find(".fdi-item").first().text()) || null,
+    id:       extractId(href),
+    name:     clean(anchor.text()),
+    jname:    anchor.attr("data-jp") || null,
+    poster:   poster.find("img").attr("data-src") || poster.find("img").attr("src") || null,
+    duration: clean(detail.find(".fdi-duration").text()) || null,
+    type:     clean(detail.find(".fdi-item").first().text()) || null,
+    rating:   clean(poster.find(".tick-pg").text()) || null,
     episodes: {
-      sub: parseInt($item.find(".tick-sub").text(), 10) || null,
-      dub: parseInt($item.find(".tick-dub").text(), 10) || null,
+      sub: parseInt(subRaw, 10) || null,
+      dub: parseInt(dubRaw, 10) || null,
     },
   };
 }
 
 // ── Related Anime ─────────────────────────────────────────────────────────────
+// Spec: { id, name, poster, duration, type, rating, episodes: { sub, dub } }
 
 export function formatRelatedAnime($item, $) {
   const anchor = $item.find("a.d-title, .film-name a").first();
   const href   = anchor.attr("href") || "";
+  const detail = $item.find(".film-detail");
+  const poster = $item.find(".film-poster");
+
+  const subRaw = $item.find(".tick-sub").clone().children("i").remove().end().text().trim();
+  const dubRaw = $item.find(".tick-dub").clone().children("i").remove().end().text().trim();
+
   return {
-    id:     extractId(href),
-    name:   clean(anchor.text()),
-    jname:  anchor.attr("data-jp") || null,
-    poster: $item.find("img").attr("data-src") || $item.find("img").attr("src") || null,
-    type:   clean($item.find(".fdi-item").first().text()) || null,
+    id:       extractId(href),
+    name:     clean(anchor.text()),
+    jname:    anchor.attr("data-jp") || null,
+    poster:   $item.find("img").attr("data-src") || $item.find("img").attr("src") || null,
+    duration: clean(detail.find(".fdi-duration").text()) || null,
+    type:     clean($item.find(".fdi-item").first().text()) || null,
+    rating:   clean(poster.find(".tick-pg").text()) || null,
     episodes: {
-      sub: parseInt($item.find(".tick-sub").text(), 10) || null,
-      dub: parseInt($item.find(".tick-dub").text(), 10) || null,
+      sub: parseInt(subRaw, 10) || null,
+      dub: parseInt(dubRaw, 10) || null,
     },
   };
 }
@@ -311,7 +379,7 @@ export function formatEpisode($item, $) {
 
 export function formatServer($item, $) {
   return {
-    serverId: $item.attr("data-id") || null,
+    serverId:   $item.attr("data-id") || null,
     serverName: clean($item.text()),
   };
 }
