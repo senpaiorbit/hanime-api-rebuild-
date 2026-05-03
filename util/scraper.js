@@ -23,16 +23,23 @@ export async function scrapeHome() {
   const html = await fetchPage(URLS.home());
   const $ = cheerio.load(html);
 
+  // ── Spotlight slider ──────────────────────────────────────────────────────
   const spotlight = [];
-  $(".swiper-slide .deslide-item").each((i, el) => {
+  // Each slide lives inside .deslide-wrap .swiper-slide — pick only slides
+  // that contain a .deslide-item (avoids phantom empty slides)
+  $("#slider .swiper-slide .deslide-item").each((i, el) => {
     spotlight.push(formatSpotlight($(el), $, i + 1));
   });
 
+  // ── Trending ──────────────────────────────────────────────────────────────
+  // The trending carousel is #trending-home .swiper-slide .inner
+  // NOT .anif-block-ul (that is the sidebar "Popular/New Release/…" block)
   const trending = [];
-  $(".anif-block-ul li").each((i, el) => {
+  $("#trending-home .swiper-slide .inner").each((i, el) => {
     trending.push(formatTrendingItem($(el), $, i + 1));
   });
 
+  // ── Generic section helper ────────────────────────────────────────────────
   const parseSection = (selector) => {
     const list = [];
     $(selector).find(".flw-item").each((_, el) => list.push(formatFilmCard($(el), $)));
@@ -42,12 +49,26 @@ export async function scrapeHome() {
   return {
     spotlight,
     trending,
-    latestEpisode: parseSection("#main-content .block_area:nth-child(1)"),
-    topUpcoming:   parseSection("#main-content .block_area:nth-child(2)"),
+    // "Latest Episode" section has id="recent-update"
+    latestEpisode: parseSection("#recent-update"),
+    // "Top Upcoming" section — find the block_area whose heading says "Top Upcoming"
+    topUpcoming: (() => {
+      let section = null;
+      $("#main-content .block_area_home").each((_, el) => {
+        if ($(el).find(".cat-heading").text().trim().includes("Top Upcoming")) {
+          section = $(el);
+        }
+      });
+      if (!section) return [];
+      const list = [];
+      section.find(".flw-item").each((_, el) => list.push(formatFilmCard($(el), $)));
+      return list;
+    })(),
     top10: {
-      today: parseSideChart($, "tab-today"),
-      week:  parseSideChart($, "tab-week"),
-      month: parseSideChart($, "tab-month"),
+      // The sidebar Most-Viewed tabs use IDs: top-viewed-day / top-viewed-week / top-viewed-month
+      today: parseSideChart($, "top-viewed-day"),
+      week:  parseSideChart($, "top-viewed-week"),
+      month: parseSideChart($, "top-viewed-month"),
     },
     genres: scrapeGenreList($),
   };
