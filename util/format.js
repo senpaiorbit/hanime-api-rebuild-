@@ -366,11 +366,19 @@ export function formatRelatedAnime($item, $) {
 // ── Episode ───────────────────────────────────────────────────────────────────
 
 export function formatEpisode($item, $) {
-  const href = $item.find("a").attr("href") || "";
+  // .ssl-item attributes:
+  //   data-number="1"
+  //   data-id="bleach-yaa9n?ep=213"  ← direct episodeId (most reliable)
+  //   class includes "ssl-item-filler" for filler episodes
+  // Child: a[href="/watch/bleach-yaa9n?ep=213"] > .ssli-detail > .ep-name
+  const dataId    = $item.attr("data-id") || "";
+  const href      = $item.find("a").first().attr("href") || "";
+  const episodeId = dataId || href.replace(/^.*\/watch\//, "").trim();
+
   return {
     number:    parseInt($item.attr("data-number"), 10) || null,
-    title:     clean($item.find(".ssli-detail .ep-name").text()) || null,
-    episodeId: href.replace(/^.*\/watch\//, "").trim(),
+    title:     clean($item.find(".ssli-detail .ep-name, .ep-name").text()) || null,
+    episodeId,
     isFiller:  $item.hasClass("ssl-item-filler"),
   };
 }
