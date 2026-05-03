@@ -6,6 +6,8 @@ import {
   formatFilmCard,
   formatSpotlight,
   formatTrendingItem,
+  formatAnifBlockItem,
+  formatTop10Item,
   formatMostPopular,
   formatAnimeInfo,
   formatRecommendedAnime,
@@ -23,80 +25,108 @@ export async function scrapeHome() {
   const html = await fetchPage(URLS.home());
   const $ = cheerio.load(html);
 
-  // ── Spotlight slider ──────────────────────────────────────────────────────
-  const spotlight = [];
-  // Each slide lives inside .deslide-wrap .swiper-slide — pick only slides
-  // that contain a .deslide-item (avoids phantom empty slides)
+  // ── Spotlight (hero slider) ──────────────────────────────────────────────
+  // Only the slides inside #slider, not the trending carousel
+  const spotlightAnimes = [];
   $("#slider .swiper-slide .deslide-item").each((i, el) => {
-    spotlight.push(formatSpotlight($(el), $, i + 1));
+    spotlightAnimes.push(formatSpotlight($(el), $, i + 1));
   });
 
-  // ── Trending ──────────────────────────────────────────────────────────────
-  // The trending carousel is #trending-home .swiper-slide .inner
-  // NOT .anif-block-ul (that is the sidebar "Popular/New Release/…" block)
-  const trending = [];
+  // ── Trending carousel ────────────────────────────────────────────────────
+  // Lives in #trending-home .swiper-slide .inner
+  const trendingAnimes = [];
   $("#trending-home .swiper-slide .inner").each((i, el) => {
-    trending.push(formatTrendingItem($(el), $, i + 1));
+    trendingAnimes.push(formatTrendingItem($(el), $, i + 1));
   });
 
-  // ── Generic section helper ────────────────────────────────────────────────
-  const parseSection = (selector) => {
+  // ── "Featured" anif-block columns (#anime-featured) ─────────────────────
+  // Col 1 (.anif-block-03) = Most Popular
+  // Col 2 (.anif-block-02, first)  = Most Favorite  → "New Release" in this HTML
+  // Col 3 (.anif-block-01) = Top Airing
+  // Col 4 (.anif-block-02, second) = Latest Completed
+  //
+  // We select by column order to be resilient to class reuse:
+  const featuredCols = $("#anime-featured .col-xl-3");
+
+  const parseAnifBlock = (colIndex) => {
     const list = [];
-    $(selector).find(".flw-item").each((_, el) => list.push(formatFilmCard($(el), $)));
+    featuredCols.eq(colIndex).find(".anif-block-ul li").each((_, el) => {
+      list.push(formatAnifBlockItem($(el), $));
+    });
     return list;
   };
 
-  return {
-    spotlight,
-    trending,
-    // "Latest Episode" section has id="recent-update"
-    latestEpisode: parseSection("#recent-update"),
-    // "Top Upcoming" section — find the block_area whose heading says "Top Upcoming"
-    topUpcoming: (() => {
-      let section = null;
-      $("#main-content .block_area_home").each((_, el) => {
-        if ($(el).find(".cat-heading").text().trim().includes("Top Upcoming")) {
-          section = $(el);
-        }
+  const mostPopularAnimes    = parseAnifBlock(0); // anif-block-03 "Popular"
+  const mostFavoriteAnimes   = parseAnifBlock(1); // anif-block-02 "New Release" (mapped as mostFavorite)
+  const topAiringAnimes      = parseAnifBlock(2); // anif-block-01 "Top Airing"
+  const latestCompletedAnimes = parseAnifBlock(3); // anif-block-02 "Completed"
+
+  // ── Latest Episode grid (#recent-update) ────────────────────────────────
+  const latestEpisodeAnimes = [];
+  $("#recent-update .flw-item").each((_, el) => {
+    latestEpisodeAnimes.push(formatFilmCard($(el), $));
+  });
+
+  // ── Top Upcoming section (second block_area_home after #schedule-block) ─
+  // The section has heading "Top Upcoming". We find it by iterating sections.
+  const topUpcomingAnimes = [];
+  $("#main-content .block_area_home").each((_, el) => {
+    if ($(el).find(".cat-heading").text().trim().includes("Top Upcoming")) {
+      $(el).find(".flw-item").each((__, fe) => {
+        topUpcomingAnimes.push(formatFilmCard($(fe), $));
       });
-      if (!section) return [];
-      const list = [];
-      section.find(".flw-item").each((_, el) => list.push(formatFilmCard($(el), $)));
-      return list;
-    })(),
-    top10: {
-      // The sidebar Most-Viewed tabs use IDs: top-viewed-day / top-viewed-week / top-viewed-month
-      today: parseSideChart($, "top-viewed-day"),
-      week:  parseSideChart($, "top-viewed-week"),
-      month: parseSideChart($, "top-viewed-month"),
-    },
-    genres: scrapeGenreList($),
+    }
+  });
+
+  // ── Top 10 (Most Viewed sidebar) ─────────────────────────────────────────
+  const top10Animes = {
+    today: parseTop10($, "top-viewed-day"),
+    week:  parseTop10($, "top-viewed-week"),
+    month: parseTop10($, "top-viewed-month"),
+  };
+
+  // ── Genres ───────────────────────────────────────────────────────────────
+  const genres = scrapeGenreList($);
+
+  return {
+    spotlightAnimes,
+    trendingAnimes,
+    latestEpisodeAnimes,
+    topUpcomingAnimes,
+    top10Animes,
+    mostPopularAnimes,
+    mostFavoriteAnimes,
+    topAiringAnimes,
+    latestCompletedAnimes,
+    genres,
   };
 }
 
-function parseSideChart($, tabId) {
+// ── Top 10 sidebar (Most Viewed tabs) ─────────────────────────────────────────
+
+function parseTop10($, tabId) {
   const list = [];
   $(`#${tabId} li`).each((i, el) => {
-    const anchor = $(el).find("a").first();
-    const href   = anchor.attr("href") || "";
-    list.push({
-      rank: i + 1,
-      id:   extractId(href),
-      name: clean($(el).find(".film-name").text()),
-      episodes: {
-        sub: parseInt($(el).find(".tick-sub").text(), 10) || null,
-        dub: parseInt($(el).find(".tick-dub").text(), 10) || null,
-      },
-    });
+    list.push(formatTop10Item($(el), $, i + 1));
   });
   return list;
 }
 
+// ── Genres list ──────────────────────────────────────────────────────────────
+
 function scrapeGenreList($) {
   const genres = [];
-  $(".nav-item a[href*='/genre/']").each((_, el) => {
-    genres.push(clean($(el).text()));
+  // The genre sidebar block is the most complete list
+  $(".block_area-genres .sb-genre-list li a").each((_, el) => {
+    const name = clean($(el).text());
+    if (name) genres.push(name);
   });
+  // Fall back to nav if sidebar not found
+  if (!genres.length) {
+    $(".nav-item a[href*='/genre/']").each((_, el) => {
+      genres.push(clean($(el).text()));
+    });
+  }
   return [...new Set(genres)];
 }
 
@@ -143,49 +173,40 @@ export async function scrapeAnimeInfo(animeId) {
   const html = await fetchPage(URLS.animeInfo(animeId));
   const $ = cheerio.load(html);
 
-  // Core info + moreInfo + any seasons already on main page
   const { info, moreInfo, seasons: pageSeason } = formatAnimeInfo($, animeId);
 
-  // Recommended from main page grid
   const recommendedAnimes = [];
   $(".block_area_category .flw-item").each((_, el) =>
     recommendedAnimes.push(formatRecommendedAnime($(el), $))
   );
 
-  // Most popular from sidebar trending
   const mostPopularAnimes = [];
   $(".block_area-realtime .anif-block-ul li, .cbox-realtime li").each((_, el) =>
     mostPopularAnimes.push(formatMostPopular($(el), $))
   );
 
-  // Resolve numeric ID for AJAX calls
   const numericId = await scrapeAnimeNumericId(animeId).catch(() => null);
 
-  // AJAX: Related animes
   const relatedAnimes = numericId
     ? await scrapeRelatedAnimes(numericId).catch(() => [])
     : [];
 
-  // AJAX: Promotional videos
   const promotionalVideos = numericId
     ? await scrapePromoVideos(numericId).catch(() => [])
     : [];
 
-  // AJAX: Character + voice actors
   const characterVoiceActor = numericId
     ? await scrapeCharacterVoiceActors(numericId).catch(() => [])
     : [];
 
-  // AJAX: Seasons (if not already on page)
   const seasons = pageSeason.length > 0
     ? pageSeason
     : numericId
       ? await scrapeSeasons(numericId).catch(() => [])
       : [];
 
-  // Merge promo + character into info
-  info.promotionalVideos    = promotionalVideos;
-  info.characterVoiceActor  = characterVoiceActor;
+  info.promotionalVideos   = promotionalVideos;
+  info.characterVoiceActor = characterVoiceActor;
 
   return {
     anime: [{ info, moreInfo }],
