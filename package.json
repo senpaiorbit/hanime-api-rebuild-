@@ -1,22 +1,16 @@
 {
-  "name": "hianime-api-hono",
-  "version": "2.0.0",
-  "description": "HiAnime scraper API — Hono + Axios + IORedis + Pino",
+  "name": "hianime-api",
+  "version": "1.0.0",
+  "description": "Vercel Edge scraper API for hianime.re",
   "type": "module",
   "engines": {
     "node": ">=18"
   },
-  "scripts": {
-    "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
-  },
   "dependencies": {
-    "@hono/node-server": "^1.12.0",
-    "axios": "^1.7.9",
-    "cheerio": "^1.0.0",
-    "hono": "^4.6.0",
-    "ioredis": "^5.4.1",
-    "pino": "^9.5.0",
-    "pino-pretty": "^13.0.0"
+    "cheerio": "^1.0.0"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
   }
 }
