@@ -1,5 +1,5 @@
 // ─── HiAnime Base URL Config ─────────────────────────────────────────────────
-const PRIMARY = "https://anikototv.to";
+const PRIMARY = "https://hianime.re";
 const BACKUP  = "https://aniwatch.re";
 
 // Active domain — swap to BACKUP if primary goes down
