@@ -1,17 +1,13 @@
 {
-  "name": "hianime-api",
+  "name": "anime-scraping-api",
   "version": "1.0.0",
-  "description": "Vercel Edge scraper API for hianime.re / anikototv.to",
   "type": "module",
-  "engines": {
-    "node": ">=18"
+  "scripts": {
+    "dev": "node api/index.js"
   },
   "dependencies": {
     "axios": "^1.7.0",
-    "cheerio": "^1.0.0"
-  },
-  "scripts": {
-    "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "cheerio": "^1.0.0",
+    "hono": "^4.0.0"
   }
 }
