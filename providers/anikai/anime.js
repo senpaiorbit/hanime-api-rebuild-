@@ -52,9 +52,9 @@ export async function getType(name, page = 1) {
 // Returns the full header/nav structure (genres, types, links, brand, search)
 // by fetching the home page and parsing its nav — available on every page.
 
-export async function getNavMenu() {
+export async function getNavMenu(providerName = 'anikai') {
   const html = await get(`${BASE}/home`);
-  return parseNavMenu(html);
+  return parseNavMenu(html, providerName);
 }
 
 // ─── Episodes ─────────────────────────────────────────────────────────────────
