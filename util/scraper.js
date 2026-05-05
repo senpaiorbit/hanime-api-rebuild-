@@ -17,7 +17,8 @@ import {
   formatSearchSuggestion,
   parseTotalPages,
 } from "../util/format.js";
-import { URLS, BASE_URL } from "../config/baseurl.js";
+import { URLS, BASE_URL, WATCH_BASE } from "../config/baseurl.js";
+import { CONFIG } from "../config/config.js";
 
 // ── Home Page ─────────────────────────────────────────────────────────────────
 
@@ -469,42 +470,245 @@ export async function scrapeQtip(animeId) {
   };
 }
 
-// ─── Watch Page Helpers ───────────────────────────────────────────────────────
+// ─── Watch / Episode Page Scraping ───────────────────────────────────────────
+//
+// Two hianime watch-page types, detected by the #player banner image source:
+//
+//   TYPE 1 — Non-anilist banner (e.g. Bleach):
+//     • Banner from a CDN like static1.cbrimages.com — NOT anilist.
+//     • No anilist_id available → no megaplay stream URLs.
+//     • Try hianime AJAX episode list; if empty, read tick-dub/tick-sub counts.
+//     • Returns { totalEpisodes: 366, episodes: [], episodeCounts: {sub,dub} }
+//
+//   TYPE 2 — Anilist banner (e.g. JJK, Solo Leveling):
+//     • Banner URL pattern:
+//         https://s4.anilist.co/file/anilistcdn/media/anime/banner/{anilist_id}-…
+//     • anilist_id extracted from that URL (e.g. "172463").
+//     • Episode list fetched from anikototv.to (CONFIG.WATCH.watchurl) which
+//       has proper episode titles in its AJAX endpoint.
+//     • Each episode carries megaplay stream URLs built from anilist_id + ep num.
+//
+// Endpoints served by api/watch.js:
+//   GET /api/v2/hianime/:animeId/episodes         → scrapeWatchEpisodes()
+//   GET /api/v2/hianime/:animeId/ep:number        → scrapeWatchEpisodeSingle()
 
-export function extractAnilistId($) {
-  const candidates = [
-    $("#player").attr("style"),
-    $("[style*='anilistcdn']").first().attr("style"),
-    $("[style*='s4.anilist.co']").first().attr("style"),
-  ];
-  for (const style of candidates) {
-    if (!style) continue;
-    const m = style.match(/anilistcdn\/media\/anime\/banner\/(\d+)/);
-    if (m) return parseInt(m[1], 10);
-  }
-  return null;
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Build megaplay stream URLs for an episode.
+ * Returns { sub: null, dub: null } when anilistId is not available.
+ */
+function buildStreamUrls(anilistId, epNum) {
+  if (!anilistId) return { sub: null, dub: null };
+  const { sub, dub } = CONFIG.WATCH.videosrc;
+  return {
+    sub: sub.replace("{anilist_id}", anilistId).replace("{ep_num}", String(epNum)),
+    dub: dub.replace("{anilist_id}", anilistId).replace("{ep_num}", String(epNum)),
+  };
 }
 
-export function extractSiteId($) {
+/**
+ * Extract the AniList numeric ID from a hianime #player banner inline style.
+ *
+ * Matches:
+ *   background-image: url('https://s4.anilist.co/file/anilistcdn/media/anime/banner/172463-…')
+ *
+ * Returns the ID string (e.g. "172463") or null for non-anilist banners.
+ */
+function extractAnilistId($) {
+  const style = $("#player").attr("style") || "";
+  const m = style.match(/anilistcdn\/media\/anime\/banner\/(\d+)-/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Read tick-item counts from the watch page sidebar.
+ * Used as last-resort fallback when no episode list is available (TYPE 1).
+ */
+function extractTickCounts($) {
+  const sub = parseInt($(".tick-item.tick-sub").first().text().replace(/\D/g, ""), 10) || null;
+  const dub = parseInt($(".tick-item.tick-dub").first().text().replace(/\D/g, ""), 10) || null;
+  return { sub, dub };
+}
+
+/**
+ * Resolve the numeric site-ID from the anikototv.to watch page.
+ * Looks for #watch-main[data-id] or the favourite button data-id.
+ */
+async function scrapeWatchSiteNumericId(slug) {
+  const html = await fetchPage(`${WATCH_BASE}/watch/${slug}`);
+  const $    = cheerio.load(html);
+
   return (
-    parseInt($("#watch-main").attr("data-id"),   10) ||
-    parseInt($("#main-wrapper").attr("data-id"), 10) ||
+    $("#watch-main").attr("data-id") ||
+    $(".ctrl.dropdown.favourite[data-id]").attr("data-id") ||
+    $(".favourite[data-fetch='true']").attr("data-id") ||
     null
   );
 }
 
-export function scrapeAnikotoEpisodeCount($) {
-  let total = null;
-  $(".bmeta .meta div").each((_, el) => {
-    const label = $(el).clone().children().remove().end().text().trim();
-    if (/^Episodes?$/i.test(label)) {
-      const n = parseInt($(el).find("span").first().text().trim(), 10);
-      if (!isNaN(n)) { total = n; return false; }
-    }
+/**
+ * Fetch and parse the episode list from anikototv.to AJAX endpoint.
+ * The endpoint returns { html: "…" } containing .ssl-item.ep-item nodes.
+ * Each node has data-number, data-id, .ep-name[title], and optional filler class.
+ */
+async function scrapeWatchSiteEpisodes(numericId) {
+  const html = await fetchHTML(`${WATCH_BASE}/ajax/v2/episode/list/${numericId}`);
+  const $    = cheerio.load(html);
+
+  const episodes = [];
+  $(".ssl-item.ep-item, .ssl-item[data-number]").each((_, el) => {
+    const num = parseInt($(el).attr("data-number"), 10);
+    if (isNaN(num)) return;
+
+    // Title: prefer the [title] attribute on .ep-name (full text), else text content
+    const nameEl = $(el).find(".ep-name");
+    const title  =
+      clean(nameEl.attr("title") || "") ||
+      clean(nameEl.text())              ||
+      null;
+
+    episodes.push({
+      number:    num,
+      title,
+      episodeId: $(el).attr("data-id") || null,
+      isFiller:  $(el).hasClass("ssl-item-filler"),
+    });
   });
-  if (total === null) {
-    const m = $("body").text().match(/(\d+)\s*(?:Episode|Eps)/i);
-    if (m) total = parseInt(m[1], 10);
+
+  return episodes;
+}
+
+// ── Public scraper functions ──────────────────────────────────────────────────
+
+/**
+ * Scrape the episode list for a hianime anime slug.
+ *
+ * Detects page type from the #player banner, then:
+ *   TYPE 2 (anilist banner) → episode list with titles + megaplay stream URLs
+ *   TYPE 1 (other banner)   → episode list or count-only fallback, no stream URLs
+ *
+ * @param  {string} slug  Anime slug, e.g. "bleach-yaa9n"
+ * @returns {object}
+ */
+export async function scrapeWatchEpisodes(slug) {
+  // Fetch hianime watch page to detect type
+  const watchHtml = await fetchPage(URLS.animeWatch(slug));
+  const $w        = cheerio.load(watchHtml);
+  const anilistId = extractAnilistId($w);
+
+  // ── TYPE 2: anilist banner ─────────────────────────────────────────────────
+  if (anilistId) {
+    let episodes = [];
+
+    // Primary: anikototv.to (has episode titles in AJAX list)
+    try {
+      const numericId = await scrapeWatchSiteNumericId(slug);
+      if (numericId) {
+        episodes = await scrapeWatchSiteEpisodes(numericId);
+      }
+    } catch (_) { /* fall through */ }
+
+    // Fallback: hianime AJAX episode list
+    if (!episodes.length) {
+      try {
+        const numericId = await scrapeAnimeNumericId(slug);
+        const data      = await scrapeEpisodes(numericId);
+        episodes        = data.episodes || [];
+      } catch (_) { /* swallow */ }
+    }
+
+    // Attach megaplay stream URLs to every episode
+    const enriched = episodes.map((ep) => ({
+      ...ep,
+      stream: buildStreamUrls(anilistId, ep.number),
+    }));
+
+    const ticks       = extractTickCounts($w);
+    const totalEpisodes = enriched.length || ticks.sub || ticks.dub || 0;
+
+    return {
+      anilistId,
+      totalEpisodes,
+      episodes: enriched,
+      watchurl: CONFIG.WATCH.watchurl,
+    };
   }
-  return total;
+
+  // ── TYPE 1: non-anilist banner ─────────────────────────────────────────────
+  let episodes = [];
+  try {
+    // Prefer numeric id already embedded in the watch page DOM
+    const numericId =
+      $w("#main-wrapper").attr("data-id") ||
+      $w(".pc-item.pc-fav[data-id]").attr("data-id") ||
+      $w(".favourite[data-fetch='true']").attr("data-id") ||
+      (await scrapeAnimeNumericId(slug));
+
+    const data = await scrapeEpisodes(numericId);
+    episodes   = data.episodes || [];
+  } catch (_) { /* swallow */ }
+
+  if (episodes.length) {
+    return {
+      anilistId:     null,
+      totalEpisodes: episodes.length,
+      episodes,
+      watchurl:      null,
+    };
+  }
+
+  // Last resort: tick counts only (e.g. Bleach → 366)
+  const ticks = extractTickCounts($w);
+  return {
+    anilistId:      null,
+    totalEpisodes:  ticks.sub || ticks.dub || 0,
+    episodes:       [],
+    episodeCounts:  ticks,
+    watchurl:       null,
+  };
+}
+
+/**
+ * Scrape details + stream URLs for a single episode.
+ *
+ * For TYPE 2 pages: returns episode metadata + megaplay URLs.
+ * For TYPE 1 pages: returns minimal info; stream URLs are null.
+ *
+ * @param  {string} slug     Anime slug, e.g. "bleach-yaa9n"
+ * @param  {number} epNumber Episode number, e.g. 5
+ * @returns {object}
+ */
+export async function scrapeWatchEpisodeSingle(slug, epNumber) {
+  const data = await scrapeWatchEpisodes(slug);
+  const ep   = data.episodes.find((e) => e.number === epNumber);
+
+  // TYPE 1 with no episode list
+  if (!ep && !data.anilistId) {
+    return {
+      animeId:   slug,
+      anilistId: null,
+      episode: {
+        number:    epNumber,
+        title:     null,
+        episodeId: null,
+        isFiller:  null,
+      },
+      stream:  { sub: null, dub: null },
+      watchurl: null,
+    };
+  }
+
+  if (!ep) {
+    throw new Error(`Episode ${epNumber} not found for: ${slug}`);
+  }
+
+  return {
+    animeId:   slug,
+    anilistId: data.anilistId,
+    episode:   ep,
+    // ep.stream already set for TYPE 2; build it fresh for TYPE 1 (will be null URLs)
+    stream:    ep.stream || buildStreamUrls(data.anilistId, epNumber),
+    watchurl:  data.watchurl,
+  };
 }
