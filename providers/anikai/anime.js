@@ -4,8 +4,6 @@ import {
   parseHome,
   parseAzList,
   parseListPage,
-  parseSyncData,
-  parseEpisodeList,
   buildEpisodeSources,
 } from './parser.js';
 import { BASE_URLS } from '../../constants/baseurl.js';
@@ -40,53 +38,63 @@ export async function getCategory(name, page = 1) {
 }
 
 // ─── Episodes ─────────────────────────────────────────────────────────────────
-// Flow:
-//   1. Fetch watch page for the anime slug (same as getById) to extract
-//      animeId (site-internal short id), malId, alId, animeName from syncData.
-//   2. Use animeId to call the AJAX episode-list endpoint which returns an
-//      HTML fragment of .ep-item anchors.
-//   3. Parse the fragment → array of { number, title, episodeId, isFiller }.
-//   4. Attach streaming src URLs (megaplay.buzz) to each episode.
+// The episode list on anikai.to is injected by JS into an empty
+// <section class="episode-section"></section> — there is no scrapeable
+// static HTML or public AJAX endpoint for it.
+//
+// Instead we derive the episode list entirely from data that parseAnime
+// already returns from the watch page:
+//   - anime.episodesTotal  → total number of episodes
+//   - anime.episodes.sub   → how many sub episodes exist
+//   - anime.episodes.dub   → how many dub episodes exist
+//   - anime.malId / alId   → used to build megaplay.buzz src URLs
+//   - anime.name           → used as episode title fallback
+//
+// Streaming src URLs are built for every episode using the three
+// megaplay.buzz strategies (mal / ani) — no aniwatch ep-id required.
 
 export async function getEpisodes(id) {
-  // Step 1 — get watch page meta
-  const watchHtml = await get(`${BASE}/watch/${id}`);
-  const { animeId, malId, alId, animeName } = parseSyncData(watchHtml);
+  const { anime } = await getById(id);
 
-  if (!animeId) {
-    throw new Error(`Could not resolve animeId for "${id}". The watch page may have changed.`);
+  const total   = anime.episodesTotal || anime.episodes.sub || anime.episodes.dub || 0;
+  const subCount = anime.episodes.sub || 0;
+  const dubCount = anime.episodes.dub || 0;
+  const malId   = anime.malId  || null;
+  const alId    = anime.alId   || null;
+  const name    = anime.name   || id;
+
+  if (!total) {
+    throw new Error(`No episode count available for "${id}".`);
   }
 
-  // Step 2 — fetch AJAX episode list (HTML fragment)
-  const listHtml = await get(`${BASE}/ajax/episode/list/${animeId}`);
+  const episodes = [];
 
-  // Step 3 — parse episode items
-  const episodes = parseEpisodeList(listHtml, animeName);
+  for (let n = 1; n <= total; n++) {
+    const title   = `${name} - Episode ${n}`;
+    const hasSub  = n <= subCount;
+    const hasDub  = n <= dubCount;
+    const sources = buildEpisodeSources(n, malId, alId, hasSub, hasDub);
 
-  // Step 4 — attach streaming sources to every episode
-  const episodesWithSrc = episodes.map((ep) => ({
-    ...ep,
-    sources: buildEpisodeSources(ep.episodeId, ep.number, malId, alId),
-  }));
+    episodes.push({ number: n, title, isFiller: false, hasSub, hasDub, sources });
+  }
 
   return {
-    totalEpisodes: episodesWithSrc.length,
+    totalEpisodes: total,
     malId,
     alId,
-    episodes: episodesWithSrc,
+    episodes,
   };
 }
 
 // ─── Single episode detail ────────────────────────────────────────────────────
-// Returns one episode entry (same shape as getEpisodes items) by episode number.
 
 export async function getEpisode(id, epNum) {
-  const { episodes, malId, alId } = await getEpisodes(id);
-  const n = parseInt(epNum, 10);
+  const { totalEpisodes, malId, alId, episodes } = await getEpisodes(id);
+  const n  = parseInt(epNum, 10);
   const ep = episodes.find((e) => e.number === n);
 
   if (!ep) {
-    throw new Error(`Episode ${n} not found for anime "${id}".`);
+    throw new Error(`Episode ${n} not found for "${id}". Total episodes: ${totalEpisodes}.`);
   }
 
   return { malId, alId, episode: ep };
