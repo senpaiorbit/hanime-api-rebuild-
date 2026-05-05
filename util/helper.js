@@ -1,66 +1,62 @@
 // ─── Helper Utilities ─────────────────────────────────────────────────────────
+// Uses axios for all HTTP requests — better error messages, automatic JSON
+// parsing, configurable timeouts, and consistent response handling.
 
+import axios from "axios";
 import { CONFIG } from "../config/config.js";
+
+// ── Shared axios instance ──────────────────────────────────────────────────────
+
+const http = axios.create({
+  timeout: 20000,
+  validateStatus: (s) => s < 400, // treat 4xx/5xx as errors
+});
 
 /**
  * Fetch a full HTML page with browser-like headers.
- * Used for: /anime/:slug, /watch/:slug, and any page that returns
- * full HTML (not a JSON wrapper).
+ * Used for /anime/:slug, /watch/:slug, and any full-document endpoint.
  */
-export async function fetchPage(url) {
-  const res = await fetch(url, { headers: CONFIG.REQUEST_HEADERS });
-  if (!res.ok) throw new Error(`Fetch failed [${res.status}]: ${url}`);
-  return res.text();
+export async function fetchPage(url, headers = CONFIG.REQUEST_HEADERS) {
+  const res = await http.get(url, {
+    headers,
+    responseType: "text",
+  });
+  return res.data;
 }
 
 /**
- * Fetch an endpoint that returns JSON { html: "…" } or { status, html: "…" }
- * and return the inner HTML string ready for Cheerio.
+ * Fetch an endpoint that returns either:
+ *   • JSON: { html: "…" } or { status: true, html: "…" }
+ *   • Raw HTML string
  *
- * This is the scraping alternative to jQuery/browser AJAX:
- * we call the endpoint server-side and parse the HTML fragment ourselves.
- *
- * Falls back to treating the entire response body as HTML if no "html" key
- * is present (some endpoints return raw HTML directly).
+ * Returns the inner HTML string ready for Cheerio.
+ * This is the server-side scraping replacement for client-side jQuery.ajax.
  */
-export async function fetchHTML(url) {
-  const res = await fetch(url, { headers: CONFIG.AJAX_HEADERS });
-  if (!res.ok) throw new Error(`Fetch failed [${res.status}]: ${url}`);
+export async function fetchHTML(url, headers = CONFIG.AJAX_HEADERS) {
+  const res = await http.get(url, { headers });
+  const data = res.data;
 
-  const contentType = res.headers.get("content-type") || "";
-
-  // JSON wrapper: { html: "…" }  or  { status: true, html: "…" }
-  if (contentType.includes("application/json") || contentType.includes("text/json")) {
-    const data = await res.json();
+  // axios already auto-parses JSON responses
+  if (data && typeof data === "object") {
     return data.html || data.content || "";
   }
 
-  // Try to parse as JSON anyway (some servers omit content-type)
-  const text = await res.text();
-  try {
-    const data = JSON.parse(text);
-    return data.html || data.content || text;
-  } catch (_) {
-    // Response was raw HTML
-    return text;
-  }
+  // Raw HTML response
+  return String(data);
 }
 
 /**
  * Fetch JSON from an endpoint and return the parsed object.
- * Only used for endpoints that return structured JSON data
- * (e.g. episode sources which returns { type, server, link }).
+ * Used for structured endpoints (episode sources, etc.).
  */
-export async function fetchJSON(url) {
-  const res = await fetch(url, { headers: CONFIG.AJAX_HEADERS });
-  if (!res.ok) throw new Error(`Fetch failed [${res.status}]: ${url}`);
-  return res.json();
+export async function fetchJSON(url, headers = CONFIG.AJAX_HEADERS) {
+  const res = await http.get(url, { headers });
+  return res.data;
 }
 
 /**
  * Extract the anime slug-id from a full hianime URL or relative href.
  * e.g. "/anime/bleach-yaa9n" → "bleach-yaa9n"
- *      "https://hianime.re/watch/bleach-yaa9n" → "bleach-yaa9n"
  */
 export function extractId(href = "") {
   return href.replace(/^.*\/(anime|watch)\//, "").split("?")[0].trim();
@@ -90,7 +86,7 @@ export function clean(str = "") {
 }
 
 /**
- * Build a standard JSON error response for Edge functions.
+ * Build a standard JSON error response.
  */
 export function errorResponse(message, status = 500) {
   return Response.json(
@@ -118,7 +114,7 @@ export function jsonResponse(data, ttl = 0) {
       : "no-store";
 
   return Response.json(
-    { success: true, data },
+    { success: true, ...data },
     {
       status: 200,
       headers: {
@@ -131,14 +127,22 @@ export function jsonResponse(data, ttl = 0) {
 }
 
 /**
- * Parse the tick counts (sub/dub/raw episode counts) from a film card element.
- * Returns { sub, dub, raw } — all numbers or null.
+ * Parse the tick counts (sub/dub/eps episode counts) from a film card element.
+ * Strips icon children before reading text.
  */
 export function parseTicks($el, $) {
-  const sub  = parseInt($el.find(".tick-sub").text().trim(), 10)  || null;
-  const dub  = parseInt($el.find(".tick-dub").text().trim(), 10)  || null;
-  const raw  = parseInt($el.find(".tick-eps").text().trim(), 10)  || null;
-  return { sub, dub, raw };
+  const getText = (sel) => {
+    const num = parseInt(
+      $el.find(sel).clone().children().remove().end().text().replace(/\D/g, ""),
+      10
+    );
+    return isNaN(num) ? null : num;
+  };
+  return {
+    sub: getText(".tick-sub"),
+    dub: getText(".tick-dub"),
+    raw: getText(".tick-eps"),
+  };
 }
 
 /**
