@@ -4,6 +4,7 @@ import {
   parseHome,
   parseAzList,
   parseListPage,
+  parseNavMenu,
   buildEpisodeSources,
 } from './parser.js';
 import { BASE_URLS } from '../../constants/baseurl.js';
@@ -35,6 +36,25 @@ export async function getCategory(name, page = 1) {
   // categories: movie, tv, ova, ona, special, new-releases, updates, ongoing, recent, completed, upcoming
   const html = await get(`${BASE}/${name}`, { params: { page } });
   return parseListPage(html);
+}
+
+// ─── Type pages ───────────────────────────────────────────────────────────────
+// Types use the same top-level URL pattern as categories (/ova, /tv, /movie etc.)
+// and produce the same HTML structure — parseListPage handles both identically.
+// getType is a named alias so routes can be semantically distinct.
+
+export async function getType(name, page = 1) {
+  const html = await get(`${BASE}/${name}`, { params: { page } });
+  return parseListPage(html);
+}
+
+// ─── Nav menu ─────────────────────────────────────────────────────────────────
+// Returns the full header/nav structure (genres, types, links, brand, search)
+// by fetching the home page and parsing its nav — available on every page.
+
+export async function getNavMenu() {
+  const html = await get(`${BASE}/home`);
+  return parseNavMenu(html);
 }
 
 // ─── Episodes ─────────────────────────────────────────────────────────────────
