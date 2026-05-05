@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { handle } from '@hono/node-server/vercel';
 import { getProvider } from '../core/providerManager.js';
 
 const app = new Hono();
@@ -117,4 +118,7 @@ app.onError((error, c) => {
   return err(c, error.message);
 });
 
-export default app;
+// ─── Export ───────────────────────────────────────────────────────────────────
+// handle() wraps Hono for Vercel's serverless Node.js runtime
+
+export default handle(app);
