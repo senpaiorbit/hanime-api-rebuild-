@@ -152,21 +152,32 @@ export function parseNavMenu(html, providerName = 'anikai') {
       filter_link: `${`/api/v2/${providerName}`}/search`,
     },
     menu: { genres, types, links },
-    // Sort options supported by ?sort= on search, genre, category, and type endpoints.
-    // Values match the site's ?sort= query param (confirmed from /browser dropdown).
-    sortOptions: [
-      { label: 'Updated date',   value: 'updated_date'  },
-      { label: 'Release date',   value: 'release_date'  },
-      { label: 'End date',       value: 'end_date'       },
-      { label: 'Added date',     value: 'added_date'     },
-      { label: 'Trending',       value: 'trending'       },
-      { label: 'Name A-Z',       value: 'name_az'        },
-      { label: 'Average score',  value: 'score'          },
-      { label: 'MAL score',      value: 'mal_score'      },
-      { label: 'Most viewed',    value: 'most_viewed'    },
-      { label: 'Most followed',  value: 'most_followed'  },
-      { label: 'Episode count',  value: 'episode_count'  },
-    ],
+    // Browse endpoint — supports all filters combined with pagination.
+    // Use: /api/v2/{provider}/browse?sort=trending&type[]=tv&genre[]=47&page=2
+    browse: {
+      url: `/api/v2/${providerName}/browse`,
+      sortOptions: [
+        { label: 'Updated date',   value: 'updated_date'  },
+        { label: 'Release date',   value: 'release_date'  },
+        { label: 'End date',       value: 'end_date'       },
+        { label: 'Added date',     value: 'added_date'     },
+        { label: 'Trending',       value: 'trending'       },
+        { label: 'Name A-Z',       value: 'title_az'       },
+        { label: 'Average score',  value: 'avg_score'      },
+        { label: 'MAL score',      value: 'mal_score'      },
+        { label: 'Most viewed',    value: 'most_viewed'    },
+        { label: 'Most followed',  value: 'most_followed'  },
+        { label: 'Episode count',  value: 'episode_count'  },
+      ],
+      filters: {
+        type:     ['movie', 'tv', 'ova', 'ona', 'special', 'music'],
+        status:   ['info', 'releasing', 'completed'],
+        season:   ['fall', 'summer', 'spring', 'winter', 'unknown'],
+        rating:   ['g', 'pg', 'pg_13', 'r', 'r+', 'rx'],
+        country:  [{ label: 'China', value: '2' }, { label: 'Japan', value: '11' }],
+        language: ['sub', 'softsub', 'dub', 'subdub'],
+      },
+    },
     language: ['en', 'jp'],
   };
 }
