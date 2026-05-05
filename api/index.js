@@ -100,37 +100,42 @@ app.get('/api/v2/:provider/azlist', async (c) => {
 });
 
 // ─── Genre ────────────────────────────────────────────────────────────────────
-// GET /api/v2/anikai/genre/:name?page=
+// GET /api/v2/anikai/genre/:name?page=&sort=
+// sort values: updated_date, release_date, end_date, added_date, trending,
+//              name_az, score, mal_score, most_viewed, most_followed, episode_count
 
 app.get('/api/v2/:provider/genre/:name', async (c) => {
   const p    = await getProvider(c.req.param('provider'));
   const name = c.req.param('name');
   const page = parseInt(c.req.query('page') || '1', 10);
-  const data = await p.anime.getGenre(name, page);
+  const sort = c.req.query('sort') || null;
+  const data = await p.anime.getGenre(name, page, sort);
   return ok(c, { genreName: data.title, animes: data.animes, currentPage: data.currentPage, totalPages: data.totalPages, hasNextPage: data.hasNextPage });
 });
 
 // ─── Category ─────────────────────────────────────────────────────────────────
-// GET /api/v2/anikai/category/:name?page=
+// GET /api/v2/anikai/category/:name?page=&sort=
 // categories: movie, tv, ova, ona, special, new-releases, updates, ongoing, recent, completed, upcoming
 
 app.get('/api/v2/:provider/category/:name', async (c) => {
   const p    = await getProvider(c.req.param('provider'));
   const name = c.req.param('name');
   const page = parseInt(c.req.query('page') || '1', 10);
-  const data = await p.anime.getCategory(name, page);
+  const sort = c.req.query('sort') || null;
+  const data = await p.anime.getCategory(name, page, sort);
   return ok(c, { category: data.title, animes: data.animes, currentPage: data.currentPage, totalPages: data.totalPages, hasNextPage: data.hasNextPage });
 });
 
 // ─── Type ──────────────────────────────────────────────────────────────────────
-// GET /api/v2/anikai/type/:name?page=
+// GET /api/v2/anikai/type/:name?page=&sort=
 // types: movie, tv, ova, ona, special
 
 app.get('/api/v2/:provider/type/:name', async (c) => {
   const p    = await getProvider(c.req.param('provider'));
   const name = c.req.param('name');
   const page = parseInt(c.req.query('page') || '1', 10);
-  const data = await p.anime.getType(name, page);
+  const sort = c.req.query('sort') || null;
+  const data = await p.anime.getType(name, page, sort);
   return ok(c, { type: data.title, animes: data.animes, currentPage: data.currentPage, totalPages: data.totalPages, hasNextPage: data.hasNextPage });
 });
 
@@ -151,9 +156,9 @@ app.get('/api/search',         async (c) => { const p = await provider(c); const
 app.get('/api/anime/:id',      async (c) => { const p = await provider(c); return ok(c, await p.anime.getById(c.req.param('id'))); });
 app.get('/api/anime/:id/episodes', async (c) => { const p = await provider(c); return ok(c, await p.anime.getEpisodes(c.req.param('id'))); });
 app.get('/api/anime/:id/ep/:number', async (c) => { const p = await provider(c); return ok(c, await p.anime.getEpisode(c.req.param('id'), c.req.param('number'))); });
-app.get('/api/genre/:name',    async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const d = await p.anime.getGenre(c.req.param('name'), pg); return ok(c, d); });
-app.get('/api/category/:name', async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const d = await p.anime.getCategory(c.req.param('name'), pg); return ok(c, d); });
-app.get('/api/type/:name',     async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const d = await p.anime.getType(c.req.param('name'), pg); return ok(c, { type: d.title, animes: d.animes, currentPage: d.currentPage, totalPages: d.totalPages, hasNextPage: d.hasNextPage }); });
+app.get('/api/genre/:name',    async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const sort = c.req.query('sort') || null; const d = await p.anime.getGenre(c.req.param('name'), pg, sort); return ok(c, d); });
+app.get('/api/category/:name', async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const sort = c.req.query('sort') || null; const d = await p.anime.getCategory(c.req.param('name'), pg, sort); return ok(c, d); });
+app.get('/api/type/:name',     async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const sort = c.req.query('sort') || null; const d = await p.anime.getType(c.req.param('name'), pg, sort); return ok(c, { type: d.title, animes: d.animes, currentPage: d.currentPage, totalPages: d.totalPages, hasNextPage: d.hasNextPage }); });
 app.get('/api/azlist/:sort',   async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); return ok(c, await p.anime.getAzList(c.req.param('sort'), pg)); });
 app.get('/api/nav',            async (c) => { const pName = c.req.query('provider') || 'anikai'; const p = await getProvider(pName); return ok(c, { header: await p.anime.getNavMenu(pName) }); });
 
