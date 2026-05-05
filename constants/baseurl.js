@@ -1,3 +1,4 @@
 export const BASE_URLS = {
-  hianime: 'https://hianime.re',
+  anikai: 'https://anikai.to',
+  hianime: 'https://hianime.to',
 };
