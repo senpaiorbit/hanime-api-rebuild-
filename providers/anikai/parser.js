@@ -58,97 +58,28 @@ function parseGenreList($) {
   return each($, 'header .nav-menu ul li ul.c4 li a', el => el.text().trim()).filter(Boolean);
 }
 
-// ─── syncData helper ──────────────────────────────────────────────────────────
-// Extracts the embedded JSON from <script id="syncData"> on watch pages.
-// Returns: { animeId, malId, alId, animeName, seriesUrl, currentEpisode }
-// Used by both parseAnime and parseSyncData (episode fetch path).
-
-export function parseSyncData(html) {
-  const $ = load(html);
-  try {
-    const sync = JSON.parse($('#syncData').text());
-    return {
-      animeId:        sync.anime_id   || null,
-      malId:          sync.mal_id     ? String(sync.mal_id) : null,
-      alId:           sync.al_id      ? String(sync.al_id)  : null,
-      animeName:      sync.name       || null,
-      seriesUrl:      sync.series_url || null,
-      currentEpisode: sync.episode    || null,
-    };
-  } catch (_) {
-    return { animeId: null, malId: null, alId: null, animeName: null, seriesUrl: null, currentEpisode: null };
-  }
-}
-
-// ─── Episode list (AJAX fragment) ─────────────────────────────────────────────
-// Endpoint: GET /ajax/episode/list/{anime_id}
-// Returns an HTML fragment (not a full page) with .ep-item elements.
+// ─── Episode streaming sources ────────────────────────────────────────────────
+// Builds megaplay.buzz embed URLs for a given episode number.
+// Two strategies are always attempted (mal + ani) when ids are present.
+// hasSub / hasDub flags control which language variants are included.
 //
-// Known .ep-item structure (anikai / aniwatch):
-//   <a class="ep-item" href="/watch/{slug}?ep={ep_id}"
-//      data-number="{number}" data-title="{title or empty}"
-//      data-filler="{0|1}">
-//     <span>{number}</span>
-//   </a>
-//
-// We build the aniwatch-style episodeId: "{slug}?ep={ep_id}" for use with
-// the megaplay.buzz stream/s-2 endpoint.
-
-export function parseEpisodeList(html, animeName) {
-  const $ = load(html);
-
-  const episodes = [];
-  $('a.ep-item').each((_, el) => {
-    const $el     = $(el);
-    const href    = $el.attr('href') || '';                        // e.g. /watch/bleach-re3j?ep=213
-    const epId    = href.replace('/watch/', '').trim();            // bleach-re3j?ep=213  (aniwatch ep id)
-    const numRaw  = $el.attr('data-number') || $el.find('span').first().text().trim();
-    const number  = parseInt(numRaw, 10) || null;
-    const rawTitle = ($el.attr('data-title') || '').trim();
-    const title   = rawTitle || (animeName && number ? `${animeName} - ${number}` : `Episode ${number ?? '?'}`);
-    const isFiller = $el.attr('data-filler') === '1';
-
-    episodes.push({ number, title, episodeId: epId, isFiller });
-  });
-
-  return episodes;
-}
-
-// ─── Build streaming sources for one episode ──────────────────────────────────
-// megaplay.buzz supports three lookup strategies (try in order):
-//   1. s-2/{aniwatch-ep-id}/{lang}   — most precise, requires ep-id from AJAX list
-//   2. mal/{mal-id}/{ep-num}/{lang}  — fallback when only MAL id is available
-//   3. ani/{al-id}/{ep-num}/{lang}   — fallback when only AniList id is available
-//
-// We always build all available src URLs; callers decide which to use.
+// Endpoint patterns:
+//   https://megaplay.buzz/stream/mal/{mal-id}/{ep-num}/{lang}
+//   https://megaplay.buzz/stream/ani/{al-id}/{ep-num}/{lang}
 
 const EMBED_BASE = 'https://megaplay.buzz';
 
-export function buildEpisodeSources(epId, number, malId, alId) {
+export function buildEpisodeSources(epNum, malId, alId, hasSub = true, hasDub = false) {
   const sources = {};
 
-  // Strategy 1 — aniwatch / s-2 (most reliable)
-  if (epId) {
-    sources.sub = `${EMBED_BASE}/stream/s-2/${encodeURIComponent(epId)}/sub`;
-    sources.dub = `${EMBED_BASE}/stream/s-2/${encodeURIComponent(epId)}/dub`;
-  } else if (malId && number) {
-    // Strategy 2 — MAL id
-    sources.sub = `${EMBED_BASE}/stream/mal/${malId}/${number}/sub`;
-    sources.dub = `${EMBED_BASE}/stream/mal/${malId}/${number}/dub`;
-  } else if (alId && number) {
-    // Strategy 3 — AniList id
-    sources.sub = `${EMBED_BASE}/stream/ani/${alId}/${number}/sub`;
-    sources.dub = `${EMBED_BASE}/stream/ani/${alId}/${number}/dub`;
+  if (malId) {
+    if (hasSub) sources.sub    = `${EMBED_BASE}/stream/mal/${malId}/${epNum}/sub`;
+    if (hasDub) sources.dub    = `${EMBED_BASE}/stream/mal/${malId}/${epNum}/dub`;
   }
 
-  // Always attach MAL + AniList fallback src when ids are available
-  if (malId && number) {
-    sources.malSub = `${EMBED_BASE}/stream/mal/${malId}/${number}/sub`;
-    sources.malDub = `${EMBED_BASE}/stream/mal/${malId}/${number}/dub`;
-  }
-  if (alId && number) {
-    sources.aniSub = `${EMBED_BASE}/stream/ani/${alId}/${number}/sub`;
-    sources.aniDub = `${EMBED_BASE}/stream/ani/${alId}/${number}/dub`;
+  if (alId) {
+    if (hasSub) sources.aniSub = `${EMBED_BASE}/stream/ani/${alId}/${epNum}/sub`;
+    if (hasDub) sources.aniDub = `${EMBED_BASE}/stream/ani/${alId}/${epNum}/dub`;
   }
 
   return sources;
@@ -335,7 +266,7 @@ export function parseAnime(html) {
   // ID — prefer canonical link, fallback to syncData
   let id = $('link[rel="canonical"]').attr('href')?.replace('https://anikai.to/watch/', '').trim() || null;
 
-  // Parse syncData — used for animeId (AJAX key) and fallback id
+  // syncData — grab animeId (site-internal short key) alongside the slug fallback
   let animeId = null;
   try {
     const sync = JSON.parse($('#syncData').text());
