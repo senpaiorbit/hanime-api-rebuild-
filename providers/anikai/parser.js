@@ -55,7 +55,61 @@ function parseAitem($, el) {
 }
 
 function parseGenreList($) {
-  return each($, 'header .nav-menu ul li ul.c4 li a', el => el.text().trim()).filter(Boolean);
+  return each($, '#menu ul li ul.c4 li a', el => el.text().trim()).filter(Boolean);
+}
+
+// ─── Nav menu (full header structure) ────────────────────────────────────────
+// Extracts genres, types, and quick-links from the nav menu present on every page.
+// Selector map (confirmed from live HTML):
+//   Genres  → #menu ul li ul.c4 li a
+//   Types   → #menu ul li ul.c1 li a
+//   Links   → #menu > ul > li > a[href] (direct anchors, not inside a sub-ul)
+
+export function parseNavMenu(html) {
+  const $ = load(html);
+
+  const genres = each($, '#menu ul li ul.c4 li a', (el) => ({
+    name: el.text().trim(),
+    url:  el.attr('href') || null,
+  })).filter(g => g.name);
+
+  const types = each($, '#menu ul li ul.c1 li a', (el) => ({
+    name: el.text().trim(),
+    url:  el.attr('href') || null,
+  })).filter(t => t.name);
+
+  // Direct top-level <li><a href="..."> links (not javascript:; parents of sub-menus)
+  const links = [];
+  $('#menu > ul > li > a').each((_, a) => {
+    const href = $(a).attr('href');
+    const name = $(a).text().replace(/<[^>]+>/g, '').trim();
+    if (href && href !== 'javascript:;' && name) {
+      // Skip mobile-only duplicates (Random / Watch2gether exist as nav buttons too)
+      const parentLi = $(a).parent('li');
+      const isMobileOnly = parentLi.hasClass('d-block') && parentLi.hasClass('d-md-none');
+      if (!isMobileOnly) links.push({ name, url: href });
+    }
+  });
+
+  const brand = {
+    link: $('header .brand').attr('href') || '/home',
+    logo: $('header .brand img').attr('src') || null,
+  };
+
+  const w2g    = $('header a.w2g-btn').attr('href') || null;
+  const random = $('header a.shuffle-btn').attr('href') || null;
+
+  return {
+    brand,
+    buttons: { menu: true, search: true, watch2gether: w2g, random },
+    search: {
+      action:      $('header form[action]').attr('action') || '/browser',
+      placeholder: $('header form input[name="keyword"]').attr('placeholder') || 'Search anime',
+      filter_link: $('header form a[href]').attr('href') || '/browser',
+    },
+    menu: { genres, types, links },
+    language: ['en', 'jp'],
+  };
 }
 
 // ─── Episode streaming sources ────────────────────────────────────────────────
