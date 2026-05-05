@@ -81,6 +81,31 @@ app.get('/api/v2/:provider/search', async (c) => {
   return ok(c, data);
 });
 
+// ─── Browse ───────────────────────────────────────────────────────────────────
+// GET /api/v2/anikai/browse?page=&sort=&type[]=&genre[]=&status[]=&season[]=
+//                           &year[]=&rating[]=&country[]=&language[]=&keyword=
+//
+// All params are optional and combinable.
+// sort values : updated_date | release_date | end_date | added_date | trending
+//               title_az | avg_score | mal_score | most_viewed | most_followed | episode_count
+// type[]      : movie | tv | ova | ona | special | music
+// status[]    : info | releasing | completed
+// season[]    : fall | summer | spring | winter | unknown
+// year[]      : 2026 | 2025 | ... | 1900s
+// rating[]    : g | pg | pg_13 | r | r+ | rx
+// country[]   : 2 (China) | 11 (Japan)
+// language[]  : sub | softsub | dub | subdub
+
+app.get('/api/v2/:provider/browse', async (c) => {
+  const p    = await getProvider(c.req.param('provider'));
+  const page = parseInt(c.req.query('page') || '1', 10);
+  const { page: _p, provider: _pr, ...filters } = Object.fromEntries(
+    Object.entries(c.req.query()).filter(([k]) => !['page', 'provider'].includes(k))
+  );
+  const data = await p.search.browse(filters, page);
+  return ok(c, data);
+});
+
 // ─── AZ List ──────────────────────────────────────────────────────────────────
 // GET /api/v2/anikai/azlist/:sortOption?page=
 
@@ -153,6 +178,7 @@ app.get('/api/v2/:provider/nav', async (c) => {
 
 app.get('/api/home',           async (c) => { const p = await provider(c); return ok(c, await p.anime.getHome()); });
 app.get('/api/search',         async (c) => { const p = await provider(c); const q = c.req.query('q'); if (!q) return err(c, 'Missing q', 400); const page = parseInt(c.req.query('page') || '1', 10); return ok(c, await p.search.query(q, page)); });
+app.get('/api/browse',         async (c) => { const p = await provider(c); const page = parseInt(c.req.query('page') || '1', 10); const { page: _p, provider: _pr, ...filters } = Object.fromEntries(Object.entries(c.req.query()).filter(([k]) => !['page', 'provider'].includes(k))); return ok(c, await p.search.browse(filters, page)); });
 app.get('/api/anime/:id',      async (c) => { const p = await provider(c); return ok(c, await p.anime.getById(c.req.param('id'))); });
 app.get('/api/anime/:id/episodes', async (c) => { const p = await provider(c); return ok(c, await p.anime.getEpisodes(c.req.param('id'))); });
 app.get('/api/anime/:id/ep/:number', async (c) => { const p = await provider(c); return ok(c, await p.anime.getEpisode(c.req.param('id'), c.req.param('number'))); });
