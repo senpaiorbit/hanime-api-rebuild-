@@ -1,57 +1,55 @@
 // ─── Helper Utilities ─────────────────────────────────────────────────────────
-// Uses axios for all HTTP requests — better error messages, automatic JSON
-// parsing, configurable timeouts, and consistent response handling.
+// Uses native fetch (Edge-runtime safe) so all existing API handlers that
+// declare `export const config = { runtime: "edge" }` continue to work.
+// The watch-episodes / watch-episode-detail handlers import axios directly
+// and do NOT use the Edge runtime.
 
-import axios from "axios";
 import { CONFIG } from "../config/config.js";
-
-// ── Shared axios instance ──────────────────────────────────────────────────────
-
-const http = axios.create({
-  timeout: 20000,
-  validateStatus: (s) => s < 400, // treat 4xx/5xx as errors
-});
 
 /**
  * Fetch a full HTML page with browser-like headers.
  * Used for /anime/:slug, /watch/:slug, and any full-document endpoint.
  */
 export async function fetchPage(url, headers = CONFIG.REQUEST_HEADERS) {
-  const res = await http.get(url, {
-    headers,
-    responseType: "text",
-  });
-  return res.data;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`Fetch failed [${res.status}]: ${url}`);
+  return res.text();
 }
 
 /**
  * Fetch an endpoint that returns either:
- *   • JSON: { html: "…" } or { status: true, html: "…" }
+ *   • JSON { html: "…" } or { status: true, html: "…" }
  *   • Raw HTML string
  *
  * Returns the inner HTML string ready for Cheerio.
- * This is the server-side scraping replacement for client-side jQuery.ajax.
  */
 export async function fetchHTML(url, headers = CONFIG.AJAX_HEADERS) {
-  const res = await http.get(url, { headers });
-  const data = res.data;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`Fetch failed [${res.status}]: ${url}`);
 
-  // axios already auto-parses JSON responses
-  if (data && typeof data === "object") {
+  const contentType = res.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json") || contentType.includes("text/json")) {
+    const data = await res.json();
     return data.html || data.content || "";
   }
 
-  // Raw HTML response
-  return String(data);
+  const text = await res.text();
+  try {
+    const data = JSON.parse(text);
+    return data.html || data.content || text;
+  } catch (_) {
+    return text;
+  }
 }
 
 /**
  * Fetch JSON from an endpoint and return the parsed object.
- * Used for structured endpoints (episode sources, etc.).
  */
 export async function fetchJSON(url, headers = CONFIG.AJAX_HEADERS) {
-  const res = await http.get(url, { headers });
-  return res.data;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`Fetch failed [${res.status}]: ${url}`);
+  return res.json();
 }
 
 /**
