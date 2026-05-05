@@ -122,6 +122,27 @@ app.get('/api/v2/:provider/category/:name', async (c) => {
   return ok(c, { category: data.title, animes: data.animes, currentPage: data.currentPage, totalPages: data.totalPages, hasNextPage: data.hasNextPage });
 });
 
+// ─── Type ──────────────────────────────────────────────────────────────────────
+// GET /api/v2/anikai/type/:name?page=
+// types: movie, tv, ova, ona, special
+
+app.get('/api/v2/:provider/type/:name', async (c) => {
+  const p    = await getProvider(c.req.param('provider'));
+  const name = c.req.param('name');
+  const page = parseInt(c.req.query('page') || '1', 10);
+  const data = await p.anime.getType(name, page);
+  return ok(c, { type: data.title, animes: data.animes, currentPage: data.currentPage, totalPages: data.totalPages, hasNextPage: data.hasNextPage });
+});
+
+// ─── Nav menu ─────────────────────────────────────────────────────────────────
+// GET /api/v2/anikai/nav
+
+app.get('/api/v2/:provider/nav', async (c) => {
+  const p = await getProvider(c.req.param('provider'));
+  const data = await p.anime.getNavMenu();
+  return ok(c, { header: data });
+});
+
 // ─── Shorthand routes (no provider prefix → uses default) ────────────────────
 
 app.get('/api/home',           async (c) => { const p = await provider(c); return ok(c, await p.anime.getHome()); });
@@ -131,7 +152,9 @@ app.get('/api/anime/:id/episodes', async (c) => { const p = await provider(c); r
 app.get('/api/anime/:id/ep/:number', async (c) => { const p = await provider(c); return ok(c, await p.anime.getEpisode(c.req.param('id'), c.req.param('number'))); });
 app.get('/api/genre/:name',    async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const d = await p.anime.getGenre(c.req.param('name'), pg); return ok(c, d); });
 app.get('/api/category/:name', async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const d = await p.anime.getCategory(c.req.param('name'), pg); return ok(c, d); });
+app.get('/api/type/:name',     async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); const d = await p.anime.getType(c.req.param('name'), pg); return ok(c, { type: d.title, animes: d.animes, currentPage: d.currentPage, totalPages: d.totalPages, hasNextPage: d.hasNextPage }); });
 app.get('/api/azlist/:sort',   async (c) => { const p = await provider(c); const pg = parseInt(c.req.query('page') || '1', 10); return ok(c, await p.anime.getAzList(c.req.param('sort'), pg)); });
+app.get('/api/nav',            async (c) => { const p = await provider(c); return ok(c, { header: await p.anime.getNavMenu() }); });
 
 // ─── Error handler ────────────────────────────────────────────────────────────
 
