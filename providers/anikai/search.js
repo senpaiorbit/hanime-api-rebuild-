@@ -33,7 +33,7 @@ export async function query(q, page = 1, filters = {}) {
 export async function browse(filters = {}, page = 1) {
   const { keyword, ...rest } = filters;
   const params = {
-    ...(keyword ? { keyword } : {}),
+    keyword: keyword || ' ',
     page,
     ...rest,
   };
