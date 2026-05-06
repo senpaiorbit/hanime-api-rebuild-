@@ -15,37 +15,43 @@ import { BASE_URLS } from '../../constants/baseurl.js';
 const BASE = BASE_URLS.anikoto;           // https://anikototv.to
 const API_BASE = BASE_URLS.anikotoApi;    // https://anikotoapi.site
 
-// ─── Home Page ─────────────────────────────────────────────────────────
+// ─── Home Page ───────────────────────────────────────────────────────
 export async function getHome() {
   const html = await get(`${BASE}/home`);
   return parseHome(html);
 }
 
-// ─── Index / Landing Page ───────────────────────────────────────────────
+// ─── Index / Landing Page ────────────────────────────────────────────
 export async function getIndex() {
   const html = await get(`${BASE}/`);
   return parseIndex(html);
 }
 
-// ─── Anime Detail ──────────────────────────────────────────────────────
+// ─── Anime Detail (Smart routing: numeric → API, slug → scraper) ────
 export async function getById(id) {
-  try {
-    // Try JSON API first (most reliable for anikoto)
-    const jsonUrl = `${API_BASE}/series/${id}`;
-    const data = await get(jsonUrl);
-    return parseAnimeFromJson(data);
-  } catch (e) {
-    // Fallback to HTML scraping from watch page
+  const isNumeric = /^\d+$/.test(id);
+  
+  if (isNumeric) {
+    // Numeric ID: use external JSON API (most reliable)
     try {
-      const html = await get(`${BASE}/watch/${id}`);
-      return parseAnime(html);
-    } catch (err) {
-      throw new Error(`Failed to fetch anime details for "${id}": ${err.message}`);
+      const jsonUrl = `${API_BASE}/series/${id}`;
+      const data = await get(jsonUrl);
+      return parseAnimeFromJson(data);
+    } catch (e) {
+      throw new Error(`Failed to fetch anime "${id}" from API: ${e.message}`);
     }
+  }
+  
+  // Slug: scrape the watch page HTML
+  try {
+    const html = await get(`${BASE}/watch/${id}`);
+    return parseAnime(html);
+  } catch (e) {
+    throw new Error(`Failed to fetch anime "${id}" from watch page: ${e.message}`);
   }
 }
 
-// ─── A-Z List ───────────────────────────────────────────────────────────
+// ─── A-Z List ────────────────────────────────────────────────────────
 export async function getAzList(sortOption = 'all', page = 1) {
   const path = sortOption === 'all' ? '/az-list' : `/az-list/${sortOption}`;
   const params = {};
@@ -54,7 +60,7 @@ export async function getAzList(sortOption = 'all', page = 1) {
   return parseAzListFromHtml(html);
 }
 
-// ─── Genre ──────────────────────────────────────────────────────────────
+// ─── Genre ───────────────────────────────────────────────────────────
 export async function getGenre(name, page = 1, sort = null) {
   const params = { page };
   if (sort) params.sort = sort;
@@ -62,17 +68,15 @@ export async function getGenre(name, page = 1, sort = null) {
   return parseListPage(html);
 }
 
-// ─── Category ───────────────────────────────────────────────────────────
+// ─── Category ────────────────────────────────────────────────────────
 export async function getCategory(name, page = 1, sort = null) {
   const params = { page };
   if (sort) params.sort = sort;
-  // Categories with status prefix need full path
-  const path = name.startsWith('status/') ? `/${name}` : `/${name}`;
-  const html = await get(`${BASE}${path}`, { params });
+  const html = await get(`${BASE}/${name}`, { params });
   return parseListPage(html);
 }
 
-// ─── Type ───────────────────────────────────────────────────────────────
+// ─── Type ────────────────────────────────────────────────────────────
 export async function getType(name, page = 1, sort = null) {
   const params = { page };
   if (sort) params.sort = sort;
@@ -80,24 +84,45 @@ export async function getType(name, page = 1, sort = null) {
   return parseListPage(html);
 }
 
-// ─── Nav Menu ───────────────────────────────────────────────────────────
+// ─── Nav Menu ────────────────────────────────────────────────────────
 export async function getNavMenu(providerName = 'anikoto') {
   const html = await get(`${BASE}/home`);
   return parseNavMenu(html, providerName);
 }
 
-// ─── Episodes ──────────────────────────────────────────────────────────
+// ─── Episodes ────────────────────────────────────────────────────────
 export async function getEpisodes(id) {
+  const isNumeric = /^\d+$/.test(id);
+  
+  if (isNumeric) {
+    try {
+      const jsonUrl = `${API_BASE}/series/${id}`;
+      const data = await get(jsonUrl);
+      return parseEpisodesFromJson(data);
+    } catch (e) {
+      throw new Error(`Failed to fetch episodes for "${id}": ${e.message}`);
+    }
+  }
+  
+  // For slugs: scrape the watch page, then try API with numeric ID from page
   try {
-    const jsonUrl = `${API_BASE}/series/${id}`;
-    const data = await get(jsonUrl);
-    return parseEpisodesFromJson(data);
+    const html = await get(`${BASE}/watch/${id}`);
+    const parsed = parseAnime(html);
+    const numericId = parsed.anime.animeId;
+    
+    if (numericId && /^\d+$/.test(numericId)) {
+      const jsonUrl = `${API_BASE}/series/${numericId}`;
+      const data = await get(jsonUrl);
+      return parseEpisodesFromJson(data);
+    }
+    
+    throw new Error('Could not determine numeric ID for episodes');
   } catch (e) {
     throw new Error(`Failed to fetch episodes for "${id}": ${e.message}`);
   }
 }
 
-// ─── Single Episode ────────────────────────────────────────────────────
+// ─── Single Episode ──────────────────────────────────────────────────
 export async function getEpisode(id, epNum) {
   const episodesData = await getEpisodes(id);
   const n = parseInt(epNum, 10);
