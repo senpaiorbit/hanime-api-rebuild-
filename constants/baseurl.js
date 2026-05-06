@@ -1,6 +1,6 @@
-// constants/baseurl.js - ADD anikoto URL
+// constants/baseurl.js - FIXED
 export const BASE_URLS = {
-  anikai: 'https://anikotoapi.site', // anikai proxy
-  anikoto: 'https://anikototv.to',
-  hianime: 'https://hianime.to',
+  anikai: 'https://anikai.to',
+  anikoto: 'https://anikototv.to',  // Main site for scraping HTML pages
+  anikotoApi: 'https://anikotoapi.site',  // JSON API for episode/series data only
 };
