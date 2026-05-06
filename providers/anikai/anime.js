@@ -5,6 +5,7 @@ import {
   parseAzList,
   parseListPage,
   parseNavMenu,
+  parseIndex,
   buildEpisodeSources,
 } from './parser.js';
 import { BASE_URLS } from '../../constants/baseurl.js';
@@ -14,6 +15,11 @@ const BASE = BASE_URLS.anikai;
 export async function getHome() {
   const html = await get(`${BASE}/home`);
   return parseHome(html);
+}
+
+export async function getIndex() {
+  const html = await get(`${BASE}/`);
+  return parseIndex(html);
 }
 
 export async function getById(id) {
