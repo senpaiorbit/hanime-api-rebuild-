@@ -1,3 +1,4 @@
+// providers/anikoto/parser.js
 import { load, text, attr, each, num } from '../../utils/dom.js';
 
 // ─── Pagination helpers ────────────────────────────────────────────────
@@ -19,9 +20,27 @@ function getCurrentPage($) {
   return num($('nav .pagination .page-item.active .page-link').text().trim()) || 1;
 }
 
+// ─── Clean up ID from href ────────────────────────────────────────────
+function extractId(href) {
+  if (!href) return null;
+  // Handle full URLs: https://anikototv.to/watch/some-slug -> some-slug
+  // Handle relative: /watch/some-slug -> some-slug
+  // Handle /watch/some-slug/ep-17 -> some-slug
+  const cleaned = href
+    .replace(/^https?:\/\/[^\/]+\/watch\//, '')
+    .replace(/^\/watch\//, '')
+    .replace(/\/ep-\d+.*$/, '')
+    .replace(/^\//, '')
+    .trim();
+  return cleaned || null;
+}
+
 // ─── Genre list from menu ─────────────────────────────────────────────
 function parseGenreList($) {
-  return each($, '#menu ul li ul.c4 li a h3', el => el.text().trim()).filter(Boolean);
+  return each($, '#menu ul li ul.c4 li a', el => {
+    const title = el.attr('title') || el.find('h3').text().trim();
+    return title;
+  }).filter(Boolean);
 }
 
 // ─── Episode extraction ───────────────────────────────────────────────
@@ -34,71 +53,79 @@ function parseEpisodes($, ctx) {
   };
 }
 
-// ─── Parse individual anime card ──────────────────────────────────────
+// ─── Parse anime card from list pages ─────────────────────────────────
 function parseAitem($, el) {
   const posterLink = $(el).find('.ani.poster a, a.poster').first();
   const href = posterLink.attr('href') || $(el).find('a').first().attr('href');
-  let id = null;
-  if (href) {
-    id = href.replace('/watch/', '').replace(/\/ep-\d+.*$/, '').replace(/^\//, '').trim();
-  }
+  const id = extractId(href);
+  
   const nameEl = $(el).find('.name.d-title');
   const name = nameEl.attr('data-jp') || nameEl.text().trim() || '';
   const jname = nameEl.attr('data-jp') || null;
   const poster = $(el).find('img').attr('src');
   const eps = parseEpisodes($, el);
+  
   let type = null;
-  const typeEl = $(el).find('.meta .right, .meta .m-item label').first();
+  // From .meta .right (type badge on poster) or .meta .m-item label
+  const typeEl = $(el).find('.meta .right').first();
   if (typeEl.length) {
-    const t = typeEl.text().trim();
-    if (t && isNaN(parseInt(t, 10)) && !['Sub', 'Dub'].includes(t)) type = t;
+    type = typeEl.text().trim() || null;
   }
+  
   return { id, name, jname, poster, type, episodes: eps };
 }
 
 // ─── Navigation helpers ───────────────────────────────────────────────
 const TYPE_SLUGS = new Set(['movie', 'tv', 'ova', 'ona', 'special', 'music']);
-const CATEGORY_SLUGS = new Set([
-  'new-release', 'latest-updated', 'most-viewed',
-  'status/not-yet-aired', 'status/currently-airing', 'status/finished-airing',
-]);
 
 function toApiUrl(siteHref, providerName) {
   if (!siteHref || siteHref === 'javascript:;') return null;
   const base = `/api/v2/${providerName}`;
+  
   const genreMatch = siteHref.match(/^\/genre\/(.+)$/);
   if (genreMatch) return `${base}/genre/${genreMatch[1]}`;
+  
   const azMatch = siteHref.match(/^\/az-list\/?(.*)$/);
   if (azMatch !== null) {
     return azMatch[1] ? `${base}/azlist/${azMatch[1]}` : `${base}/azlist`;
   }
-  const watchMatch = siteHref.match(/^\/watch\/(.+)$/);
+  
+  const watchMatch = siteHref.match(/\/watch\/(.+)$/);
   if (watchMatch) {
-    const slug = watchMatch[1].split('/ep-')[0];
+    const slug = extractId(watchMatch[0]);
     return `${base}/anime/${slug}`;
   }
+  
   const slug = siteHref.replace(/^\//, '');
+  
   if (slug.startsWith('type/')) return `${base}/type/${slug.replace('type/', '')}`;
   if (TYPE_SLUGS.has(slug)) return `${base}/type/${slug}`;
-  if (slug.startsWith('status/')) return `${base}/category/${slug}`;
-  if (CATEGORY_SLUGS.has(slug)) return `${base}/category/${slug}`;
   if (slug === 'filter') return `${base}/search`;
   if (slug === 'random') return `/api/v2/${providerName}/random`;
   if (slug === 'home') return `${base}/home`;
+  if (slug === 'latest-updated') return `${base}/category/latest-updated`;
+  if (slug === 'new-release') return `${base}/category/new-release`;
+  if (slug === 'most-viewed') return `${base}/category/most-viewed`;
+  if (slug.startsWith('status/')) return `${base}/category/${slug}`;
+  
   return siteHref;
 }
 
 // ─── Exported parsers ─────────────────────────────────────────────────
+
 export function parseNavMenu(html, providerName = 'anikoto') {
   const $ = load(html);
+  
   const genres = each($, '#menu ul li ul.c4 li a', (el) => ({
-    name: ($(el).find('h3').text() || $(el).attr('title') || '').trim(),
+    name: (el.attr('title') || el.find('h3').text() || '').trim(),
     url: toApiUrl(el.attr('href'), providerName),
   })).filter(g => g.name);
+  
   const types = each($, '#menu ul li ul.c1 li a', (el) => ({
-    name: ($(el).find('h3').text() || $(el).attr('title') || '').trim(),
+    name: (el.attr('title') || el.find('h3').text() || '').trim(),
     url: toApiUrl(el.attr('href'), providerName),
   })).filter(t => t.name);
+  
   const links = [];
   $('#menu > ul > li > a').each((_, a) => {
     const href = $(a).attr('href');
@@ -107,10 +134,12 @@ export function parseNavMenu(html, providerName = 'anikoto') {
       links.push({ name, url: toApiUrl(href, providerName) });
     }
   });
+  
   const brand = {
     link: $('header .logo a').attr('href') || '/home',
     logo: $('header .logo img').attr('src') || null,
   };
+  
   return {
     brand,
     buttons: { menu: true, search: true, watch2gether: null, random: '/random' },
@@ -147,45 +176,122 @@ export function parseNavMenu(html, providerName = 'anikoto') {
 
 export function parseHome(html) {
   const $ = load(html);
+  
   const genres = parseGenreList($);
-  const spotlightAnimes = each($, '#hotest .swiper-slide .item', (el, i) => ({
-    id: $(el).find('a.btn.play').attr('href')?.replace('/watch/', '').trim() || null,
-    name: text($, '.title.d-title, h2.title', el),
-    jname: attr($, '.title.d-title', 'data-jp', el),
-    poster: $(el).find('.image div').attr('style')?.match(/url\(([^)]+)\)/)?.[1] || null,
-    description: text($, '.synopsis', el),
-    rating: text($, '.meta .rating, .meta i.rating', el),
-    rank: i + 1,
-    otherInfo: [],
-    genres: [],
-    episodes: parseEpisodes($, el),
-  }));
+  
+  // Spotlight - from #hotest .swiper-wrapper .swiper-slide.item
+  const spotlightAnimes = each($, '#hotest .swiper-wrapper .swiper-slide.item', (el, i) => {
+    const href = $(el).find('a.btn.play').attr('href');
+    return {
+      id: extractId(href),
+      name: $(el).find('.title.d-title').text().trim() || null,
+      jname: $(el).find('.title.d-title').attr('data-jp') || null,
+      poster: $(el).find('.image div').attr('style')?.match(/url\(['"]?([^)'"]+)['"]?\)/)?.[1] || null,
+      description: $(el).find('.synopsis').text().trim() || null,
+      rating: $(el).find('.meta i.rating').text().trim() || null,
+      rank: i + 1,
+      otherInfo: [
+        $(el).find('.meta i.quality').text().trim(),
+        $(el).find('.meta i.date').text().trim(),
+      ].filter(Boolean),
+      genres: [],
+      episodes: {
+        sub: $(el).find('.meta i.sub').length ? 1 : null,
+        dub: $(el).find('.meta i.dub').length ? 1 : null,
+      },
+    };
+  });
+  
+  // Latest episodes - from #recent-update .ani.items .item
   const latestEpisodeAnimes = each($, '#recent-update .ani.items .item', (el) => {
     const href = $(el).find('.ani.poster a').attr('href');
     return {
-      id: href ? href.replace('/watch/', '').split('/ep-')[0].trim() : null,
-      name: text($, '.name.d-title', el),
-      jname: attr($, '.name.d-title', 'data-jp', el),
+      id: extractId(href),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
+      poster: $(el).find('img').attr('src'),
+      type: $(el).find('.meta .right').first().text().trim() || null,
+      episodes: parseEpisodes($, el),
+    };
+  });
+  
+  // New Releases - from .top-tables section[data-name="new-release"] .scaff.items a.item
+  const newReleases = each($, '.top-tables section[data-name="new-release"] .scaff.items a.item', (el) => {
+    const href = el.attr('href');
+    return {
+      id: extractId(href),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
       poster: $(el).find('img').attr('src'),
       type: null,
       episodes: parseEpisodes($, el),
     };
   });
-  const top10Animes = {
-    today: each($, '.scaff.side.items a.item', (el) => ({
-      id: $(el).attr('href')?.replace('/watch/', '') || null,
-      rank: num($(el).find('.rank').text().trim()),
-      name: text($, '.name.d-title', el),
+  
+  // Top Upcoming - from .top-tables section[data-name="new-added"] .scaff.items a.item (Newly Added tab)
+  const topUpcomingAnimes = each($, '.top-tables section[data-name="new-added"] .scaff.items a.item', (el) => {
+    const href = el.attr('href');
+    return {
+      id: extractId(href),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
+      poster: $(el).find('img').attr('src'),
+      type: null,
+      episodes: parseEpisodes($, el),
+    };
+  });
+  
+  // Top anime - Only from the DAY tab (data-name="day") which is visible by default
+  const today = each($, '.tab-content[data-name="day"] .scaff.side.items a.item', (el) => {
+    const href = el.attr('href');
+    const rankClass = el.attr('class')?.match(/rank(\d+)/)?.[1];
+    return {
+      id: extractId(href),
+      rank: rankClass ? parseInt(rankClass, 10) : num($(el).find('.rank').text().trim()),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
       poster: $(el).find('img').attr('src'),
       episodes: parseEpisodes($, el),
-    })),
-    day: [], week: [], month: [],
+    };
+  });
+  
+  const week = each($, '.tab-content[data-name="week"] .scaff.side.items a.item', (el) => {
+    const href = el.attr('href');
+    return {
+      id: extractId(href),
+      rank: num($(el).find('.rank').text().trim()),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
+      poster: $(el).find('img').attr('src'),
+      episodes: parseEpisodes($, el),
+    };
+  });
+  
+  const month = each($, '.tab-content[data-name="month"] .scaff.side.items a.item', (el) => {
+    const href = el.attr('href');
+    return {
+      id: extractId(href),
+      rank: num($(el).find('.rank').text().trim()),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
+      poster: $(el).find('img').attr('src'),
+      episodes: parseEpisodes($, el),
+    };
+  });
+  
+  return {
+    genres,
+    spotlightAnimes,
+    latestEpisodeAnimes,
+    newReleases,
+    topUpcomingAnimes,
+    top10Animes: { today, day: [], week, month },
   };
-  return { genres, spotlightAnimes, latestEpisodeAnimes, newReleases: [], topUpcomingAnimes: [], top10Animes };
 }
 
 export function parseIndex(html) {
   const $ = load(html);
+  
   return {
     meta: {
       title: $('title').text().trim() || null,
@@ -237,7 +343,8 @@ export function parseListPage(html) {
 export function parseAnime(html) {
   const $ = load(html);
   const canonical = $('link[rel="canonical"]').attr('href') || '';
-  const id = canonical.replace(/^https?:\/\/[^\/]+\/watch\//, '').replace(/\/ep-\d+$/, '').trim() || null;
+  const id = extractId(canonical);
+  
   return {
     anime: {
       id,
