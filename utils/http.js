@@ -13,15 +13,21 @@ const apiClient = axios.create({
   headers: {
     ...config.headers,
     'Accept': 'application/json',
-    'Origin': 'https://anikototv.to',
-    'Referer': 'https://anikototv.to/',
   },
 });
 
 export async function get(url, options = {}) {
-  // Use different client based on URL
-  const isApiSite = url.includes('anikotoapi.site');
-  const clientToUse = isApiSite ? apiClient : client;
-  const res = await clientToUse.get(url, options);
-  return res.data;
+  try {
+    const isApiSite = url.includes('anikotoapi.site');
+    const clientToUse = isApiSite ? apiClient : client;
+    const res = await clientToUse.get(url, options);
+    return res.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(
+        `Request failed with status code ${error.response.status} for URL: ${url}`
+      );
+    }
+    throw error;
+  }
 }
