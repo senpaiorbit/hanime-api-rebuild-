@@ -37,6 +37,17 @@ app.get('/api/v2/:provider/home', async (c) => {
   return ok(c, data);
 });
 
+// ─── Index / landing page ─────────────────────────────────────────────────────
+// GET /api/v2/anikai/index
+// Parses the root landing page (https://anikai.to/) — meta, mostSearched,
+// genres list, A-Z footer links, footer menu links.
+
+app.get('/api/v2/:provider/index', async (c) => {
+  const p = await getProvider(c.req.param('provider'));
+  const data = await p.anime.getIndex();
+  return ok(c, data);
+});
+
 // ─── Anime detail ─────────────────────────────────────────────────────────────
 // GET /api/v2/anikai/anime/:animeId
 
@@ -177,6 +188,7 @@ app.get('/api/v2/:provider/nav', async (c) => {
 // ─── Shorthand routes (no provider prefix → uses default) ────────────────────
 
 app.get('/api/home',           async (c) => { const p = await provider(c); return ok(c, await p.anime.getHome()); });
+app.get('/api/index',          async (c) => { const p = await provider(c); return ok(c, await p.anime.getIndex()); });
 app.get('/api/search',         async (c) => { const p = await provider(c); const q = c.req.query('q'); if (!q) return err(c, 'Missing q', 400); const page = parseInt(c.req.query('page') || '1', 10); return ok(c, await p.search.query(q, page)); });
 app.get('/api/browse',         async (c) => { const p = await provider(c); const page = parseInt(c.req.query('page') || '1', 10); const { page: _p, provider: _pr, ...filters } = Object.fromEntries(Object.entries(c.req.query()).filter(([k]) => !['page', 'provider'].includes(k))); return ok(c, await p.search.browse(filters, page)); });
 app.get('/api/anime/:id',      async (c) => { const p = await provider(c); return ok(c, await p.anime.getById(c.req.param('id'))); });
