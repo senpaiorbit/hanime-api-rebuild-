@@ -1,4 +1,6 @@
+// constants/baseurl.js - ADD anikoto URL
 export const BASE_URLS = {
-  anikai: 'https://anikai.to',
+  anikai: 'https://anikotoapi.site', // anikai proxy
+  anikoto: 'https://anikototv.to',
   hianime: 'https://hianime.to',
 };
