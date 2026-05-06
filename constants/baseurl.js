@@ -1,6 +1,6 @@
-// constants/baseurl.js - FIXED
 export const BASE_URLS = {
   anikai: 'https://anikai.to',
-  anikoto: 'https://anikototv.to',  // Main site for scraping HTML pages
-  anikotoApi: 'https://anikotoapi.site',  // JSON API for episode/series data only
+  anikoto: 'https://anikototv.to',         // HTML pages
+  anikotoApi: 'https://anikotoapi.site',   // JSON API for series/{id}
+  hianime: 'https://hianime.to',
 };
