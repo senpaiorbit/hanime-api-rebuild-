@@ -562,3 +562,51 @@ export function parseAnime(html) {
     seasons,
   };
 }
+
+// ─── Index / landing page ─────────────────────────────────────────────────────
+// Parses https://anikai.to/ (the root landing page, distinct from /home).
+// Extracts: meta info, most-searched links, A-Z list footer links, footer menu.
+
+export function parseIndex(html) {
+  const $ = load(html);
+
+  // ─── Meta ──────────────────────────────────────────────────────────────────
+  const title       = $('title').text().trim() || null;
+  const description = $('meta[name="description"]').attr('content') || null;
+  const ogImage     = $('meta[property="og:image"]').attr('content') || null;
+  const canonical   = $('link[rel="canonical"]').attr('href') || null;
+
+  // ─── Most searched ────────────────────────────────────────────────────────
+  // .most-searched > a  (plain keyword links, e.g. "One Piece")
+  const mostSearched = each($, '.most-searched a', (el) => ({
+    label: el.text().trim(),
+    keyword: el.attr('href')?.match(/keyword=([^&]+)/)?.[1]
+      ? decodeURIComponent(el.attr('href').match(/keyword=([^&]+)/)[1].replace(/\+/g, ' '))
+      : el.text().trim(),
+  })).filter(s => s.label);
+
+  // ─── A-Z list (footer) ────────────────────────────────────────────────────
+  // footer .azlist ul li a  → All, 0-9, A … Z
+  const azList = each($, 'footer .azlist ul li a', (el) => ({
+    label: el.text().trim(),
+    href:  el.attr('href') || null,
+  })).filter(a => a.label);
+
+  // ─── Footer menu links ────────────────────────────────────────────────────
+  // footer .menu-footer a  → REQUEST, CONTACT US
+  const footerMenu = each($, 'footer .menu-footer a', (el) => ({
+    label: el.text().trim(),
+    href:  el.attr('href') || null,
+  })).filter(m => m.label);
+
+  // ─── Genres (nav — same source as parseNavMenu) ───────────────────────────
+  const genres = each($, '#menu ul li ul.c4 li a', (el) => el.text().trim()).filter(Boolean);
+
+  return {
+    meta: { title, description, ogImage, canonical },
+    mostSearched,
+    genres,
+    azList,
+    footerMenu,
+  };
+}
