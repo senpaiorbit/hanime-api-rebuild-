@@ -1,11 +1,14 @@
+// core/providerManager.js - ADD anikoto import
+
 import * as anikai from '../providers/anikai/index.js';
+import * as anikoto from '../providers/anikoto/index.js';
 import { config } from './config.js';
 
-// Only import providers that actually exist.
-// Add new providers here once their folder is implemented.
 const providers = {
   anikai,
+  anikoto,
 };
+
 
 // Lazy-load map for providers not yet statically imported.
 // When hianime is implemented, move it to the static imports above.
