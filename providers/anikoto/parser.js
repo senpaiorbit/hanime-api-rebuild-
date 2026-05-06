@@ -1,7 +1,7 @@
 // providers/anikoto/parser.js
 import { load, text, attr, each, num } from '../../utils/dom.js';
 
-// ─── Pagination helpers ────────────────────────────────────────────────
+// ─── Pagination helpers ──────────────────────────────────────────────
 function getLastPage($) {
   const lastHref = $('nav .pagination li:last-child a.page-link').attr('href');
   if (lastHref) {
@@ -20,12 +20,9 @@ function getCurrentPage($) {
   return num($('nav .pagination .page-item.active .page-link').text().trim()) || 1;
 }
 
-// ─── Clean up ID from href ────────────────────────────────────────────
+// ─── Clean up ID from href ──────────────────────────────────────────
 function extractId(href) {
   if (!href) return null;
-  // Handle full URLs: https://anikototv.to/watch/some-slug -> some-slug
-  // Handle relative: /watch/some-slug -> some-slug
-  // Handle /watch/some-slug/ep-17 -> some-slug
   const cleaned = href
     .replace(/^https?:\/\/[^\/]+\/watch\//, '')
     .replace(/^\/watch\//, '')
@@ -35,7 +32,15 @@ function extractId(href) {
   return cleaned || null;
 }
 
-// ─── Genre list from menu ─────────────────────────────────────────────
+// ─── Extract numeric tip (data-tip) for browse/search items ─────────
+function extractTipId($, el) {
+  // data-tip attribute on .ani.poster div: <div class="ani poster" data-tip="8608">
+  const tip = $(el).find('.ani.poster').attr('data-tip') ||
+              $(el).find('[data-tip]').first().attr('data-tip');
+  return tip || null;
+}
+
+// ─── Genre list from menu ──────────────────────────────────────────
 function parseGenreList($) {
   return each($, '#menu ul li ul.c4 li a', el => {
     const title = el.attr('title') || el.find('h3').text().trim();
@@ -43,7 +48,7 @@ function parseGenreList($) {
   }).filter(Boolean);
 }
 
-// ─── Episode extraction ───────────────────────────────────────────────
+// ─── Episode extraction from item cards ────────────────────────────
 function parseEpisodes($, ctx) {
   const subText = $(ctx).find('.ep-status.sub span').text().trim();
   const dubText = $(ctx).find('.ep-status.dub span').text().trim();
@@ -53,11 +58,13 @@ function parseEpisodes($, ctx) {
   };
 }
 
-// ─── Parse anime card from list pages ─────────────────────────────────
+// ─── Parse anime card from list pages (browse/search/A-Z/genre) ────
+// Now includes data-tip (numeric anikoto ID)
 function parseAitem($, el) {
   const posterLink = $(el).find('.ani.poster a, a.poster').first();
   const href = posterLink.attr('href') || $(el).find('a').first().attr('href');
   const id = extractId(href);
+  const tipId = extractTipId($, el); // numeric anikoto ID from data-tip
   
   const nameEl = $(el).find('.name.d-title');
   const name = nameEl.attr('data-jp') || nameEl.text().trim() || '';
@@ -66,16 +73,15 @@ function parseAitem($, el) {
   const eps = parseEpisodes($, el);
   
   let type = null;
-  // From .meta .right (type badge on poster) or .meta .m-item label
   const typeEl = $(el).find('.meta .right').first();
   if (typeEl.length) {
     type = typeEl.text().trim() || null;
   }
   
-  return { id, name, jname, poster, type, episodes: eps };
+  return { id, tipId, name, jname, poster, type, episodes: eps };
 }
 
-// ─── Navigation helpers ───────────────────────────────────────────────
+// ─── Navigation helpers ────────────────────────────────────────────
 const TYPE_SLUGS = new Set(['movie', 'tv', 'ova', 'ona', 'special', 'music']);
 
 function toApiUrl(siteHref, providerName) {
@@ -111,7 +117,7 @@ function toApiUrl(siteHref, providerName) {
   return siteHref;
 }
 
-// ─── Exported parsers ─────────────────────────────────────────────────
+// ─── Exported parsers ──────────────────────────────────────────────
 
 export function parseNavMenu(html, providerName = 'anikoto') {
   const $ = load(html);
@@ -166,7 +172,6 @@ export function parseNavMenu(html, providerName = 'anikoto') {
         status: ['finished-airing', 'currently-airing', 'not-yet-aired'],
         season: ['fall', 'summer', 'spring', 'winter'],
         rating: ['PG', 'PG-13', 'G', 'R', 'R+', 'Rx'],
-        country: [{ label: 'China', value: '2' }, { label: 'Japan', value: '11' }],
         language: ['sub', 'dub'],
       },
     },
@@ -179,7 +184,7 @@ export function parseHome(html) {
   
   const genres = parseGenreList($);
   
-  // Spotlight - from #hotest .swiper-wrapper .swiper-slide.item
+  // Spotlight
   const spotlightAnimes = each($, '#hotest .swiper-wrapper .swiper-slide.item', (el, i) => {
     const href = $(el).find('a.btn.play').attr('href');
     return {
@@ -202,11 +207,12 @@ export function parseHome(html) {
     };
   });
   
-  // Latest episodes - from #recent-update .ani.items .item
+  // Latest episodes
   const latestEpisodeAnimes = each($, '#recent-update .ani.items .item', (el) => {
     const href = $(el).find('.ani.poster a').attr('href');
     return {
       id: extractId(href),
+      tipId: extractTipId($, el),
       name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
       jname: $(el).find('.name.d-title').attr('data-jp') || null,
       poster: $(el).find('img').attr('src'),
@@ -215,7 +221,7 @@ export function parseHome(html) {
     };
   });
   
-  // New Releases - from .top-tables section[data-name="new-release"] .scaff.items a.item
+  // New Releases
   const newReleases = each($, '.top-tables section[data-name="new-release"] .scaff.items a.item', (el) => {
     const href = el.attr('href');
     return {
@@ -228,7 +234,7 @@ export function parseHome(html) {
     };
   });
   
-  // Top Upcoming - from .top-tables section[data-name="new-added"] .scaff.items a.item (Newly Added tab)
+  // Top Upcoming (Newly Added tab)
   const topUpcomingAnimes = each($, '.top-tables section[data-name="new-added"] .scaff.items a.item', (el) => {
     const href = el.attr('href');
     return {
@@ -241,7 +247,7 @@ export function parseHome(html) {
     };
   });
   
-  // Top anime - Only from the DAY tab (data-name="day") which is visible by default
+  // Top anime - DAY tab
   const today = each($, '.tab-content[data-name="day"] .scaff.side.items a.item', (el) => {
     const href = el.attr('href');
     const rankClass = el.attr('class')?.match(/rank(\d+)/)?.[1];
@@ -315,6 +321,7 @@ export function parseIndex(html) {
   };
 }
 
+// Browse/Search results - includes tipId
 export function parseSearchFromHtml(html) {
   const $ = load(html);
   const animes = each($, '#list-items .item', el => parseAitem($, el));
@@ -340,40 +347,201 @@ export function parseListPage(html) {
   return { title, animes, currentPage: cur, totalPages: last, hasNextPage: cur < last };
 }
 
+// ─── Full Anime Detail from Watch Page HTML ────────────────────────
 export function parseAnime(html) {
   const $ = load(html);
+  
+  // Extract numeric anikoto ID from #watch-main data-id
+  // <div id="watch-main" data-id="6688">
+  const animeId = $('#watch-main').attr('data-id') || null;
+  
+  // Extract slug from canonical or data-url
   const canonical = $('link[rel="canonical"]').attr('href') || '';
-  const id = extractId(canonical);
+  const dataUrl = $('#watch-main').attr('data-url') || '';
+  const slugFromUrl = extractId(dataUrl || canonical);
+  
+  // ─── Basic info ──────────────────────────────────────────────────
+  const name = $('h1.title.d-title').text().trim() || null;
+  const jname = $('h1.title.d-title').attr('data-jp') || null;
+  const poster = $('.poster img[itemprop="image"]').attr('src') || 
+                 $('meta[property="og:image"]').attr('content') || null;
+  
+  // Synonyms from .names div
+  const synonymsText = $('.binfo .info .names').text().trim();
+  const synonyms = synonymsText ? synonymsText.split(';').map(s => s.trim()).filter(Boolean).join(', ') : null;
+  
+  // Description from .synopsis .content
+  const description = $('.synopsis .shorting .content').text().trim() || 
+                      $('meta[property="og:description"]').attr('content') || null;
+  
+  // ─── Meta info ──────────────────────────────────────────────────
+  const rating = $('.meta i.rating').text().trim() || null;
+  
+  // Type from .bmeta .meta:first div:contains("Type:")
+  let type = null;
+  $('.bmeta .meta').first().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Type:')) {
+      type = $(div).find('span').text().trim() || null;
+    }
+  });
+  
+  // Premiered
+  let premiered = null;
+  $('.bmeta .meta').first().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Premiered:')) {
+      premiered = $(div).find('a').text().trim() || $(div).find('span').text().trim() || null;
+    }
+  });
+  
+  // Aired
+  let aired = null;
+  $('.bmeta .meta').first().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Aired:')) {
+      aired = $(div).find('span').text().trim() || null;
+    }
+  });
+  
+  // Status
+  let status = null;
+  $('.bmeta .meta').first().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Status:')) {
+      status = $(div).find('span, a').text().trim() || null;
+    }
+  });
+  
+  // Duration
+  let duration = null;
+  $('.bmeta .meta').last().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Duration:')) {
+      duration = $(div).find('span').text().trim() || null;
+    }
+  });
+  
+  // Episodes total
+  let episodesTotal = null;
+  $('.bmeta .meta').last().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Episodes:')) {
+      episodesTotal = $(div).find('span').text().trim() || null;
+    }
+  });
+  
+  // ─── Genres ─────────────────────────────────────────────────────
+  const genres = [];
+  $('.bmeta .meta').first().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Genres:')) {
+      $(div).find('a').each((_, a) => {
+        genres.push($(a).text().trim());
+      });
+    }
+  });
+  
+  // ─── Studios ────────────────────────────────────────────────────
+  const studios = [];
+  $('.bmeta .meta').last().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Studios:')) {
+      $(div).find('a').each((_, a) => {
+        studios.push($(a).find('span').text().trim() || $(a).text().trim());
+      });
+    }
+  });
+  
+  // ─── Producers ──────────────────────────────────────────────────
+  const producers = [];
+  $('.bmeta .meta').last().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('Producers:')) {
+      $(div).find('a').each((_, a) => {
+        producers.push($(a).find('span').text().trim() || $(a).text().trim());
+      });
+    }
+  });
+  
+  // ─── MAL Score ──────────────────────────────────────────────────
+  let score = null;
+  let malId = null;
+  $('.bmeta .meta').last().find('div').each((_, div) => {
+    if ($(div).text().trim().startsWith('MAL:')) {
+      score = $(div).find('span').text().trim() || null;
+    }
+  });
+  
+  // MAL ID from the fetch call in the page: fetch('https://anikototv.to/anime/getinfo/6688')
+  // The numeric mangaId in the script: const mangaId = 6688;
+  const scripts = $('script').map((_, el) => $(el).html()).get();
+  for (const script of scripts) {
+    if (script && script.includes('mangaId')) {
+      const match = script.match(/const\s+mangaId\s*=\s*(\d+)/);
+      if (match) malId = match[1];
+    }
+  }
+  
+  // ─── Sub/Dub from icons ─────────────────────────────────────────
+  const hasSub = $('.meta i.sub').length > 0;
+  const hasDub = $('.meta i.dub').length > 0;
+  
+  // ─── Related (from sidebar #watch-order) ─────────────────────────
+  const related = each($, '#watch-order .w-side-section .scaff.side.items a.item', (el) => {
+    const href = el.attr('href');
+    return {
+      id: extractId(href),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
+      poster: $(el).find('img').attr('src'),
+      type: $(el).find('.meta span.dot').first().text().trim() || null,
+      episodes: {
+        sub: parseInt($(el).find('.meta span.dot').eq(1).text().trim(), 10) || null,
+        dub: null,
+      },
+    };
+  });
+  
+  // ─── Recommended (sidebar section without id) ────────────────────
+  const recommended = each($, '.sidebar .w-side-section:not(#watch-order) .scaff.side.items a.item', (el) => {
+    const href = el.attr('href');
+    return {
+      id: extractId(href),
+      name: $(el).find('.name.d-title').attr('data-jp') || $(el).find('.name.d-title').text().trim() || null,
+      jname: $(el).find('.name.d-title').attr('data-jp') || null,
+      poster: $(el).find('img').attr('src'),
+      type: $(el).find('.meta span.dot').first().text().trim() || null,
+      episodes: {
+        sub: parseInt($(el).find('.meta span.dot').eq(1).text().trim(), 10) || null,
+        dub: null,
+      },
+    };
+  });
   
   return {
     anime: {
-      id,
-      animeId: id,
-      name: $('meta[property="og:title"]').attr('content') || text($, 'h1.title') || '',
-      jname: $('meta[property="og:title"]').attr('content') || null,
-      synonyms: null,
-      japanese: null,
-      poster: $('meta[property="og:image"]').attr('content') || null,
-      description: $('meta[property="og:description"]').attr('content') || '',
-      type: null,
-      rating: null,
-      episodes: { sub: null, dub: null },
-      duration: null,
-      premiered: null,
-      aired: null,
+      id: slugFromUrl || animeId,
+      animeId: animeId,
+      name,
+      jname,
+      synonyms,
+      japanese: jname,
+      poster,
+      description,
+      type,
+      rating,
+      episodes: {
+        sub: hasSub ? 1 : null,
+        dub: hasDub ? 1 : null,
+      },
+      duration,
+      premiered,
+      aired,
       broadcast: null,
-      status: null,
-      score: null,
-      episodesTotal: null,
+      status,
+      score,
+      episodesTotal: episodesTotal === '?' ? null : parseInt(episodesTotal, 10) || null,
       country: null,
-      genres: [],
-      studios: [],
-      producers: [],
-      malId: null,
-      alId: null,
+      genres,
+      studios,
+      producers,
+      malId,
+      alId: null, // AniList ID not in page
     },
-    related: [],
-    recommended: [],
+    related,
+    recommended,
     seasons: [],
   };
 }
