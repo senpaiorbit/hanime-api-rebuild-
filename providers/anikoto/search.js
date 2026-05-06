@@ -1,11 +1,11 @@
 // providers/anikoto/search.js
 import { get } from '../../utils/http.js';
-import { parseSearch } from './parser.js';
+import { parseSearchFromHtml, parseBrowseFromHtml } from './parser.js';
 import { BASE_URLS } from '../../constants/baseurl.js';
 
-const BASE = BASE_URLS.anikoto;
+const BASE = BASE_URLS.anikoto; // https://anikototv.to
 
-// Genre slug mapping for anikoto (based on the HTML filter page)
+// Genre slug → numeric ID map (from filter.sreach.type.genre.html)
 const GENRE_MAP = {
   'action': '1',
   'adventure': '2',
@@ -72,7 +72,7 @@ export async function query(q, page = 1, filters = {}) {
   const params = { keyword: q, page, ...filters };
   resolveGenres(params);
   const html = await get(`${BASE}/filter`, { params });
-  const result = parseSearch(html);
+  const result = parseSearchFromHtml(html);
   return {
     ...result,
     searchQuery: q,
@@ -89,7 +89,7 @@ export async function browse(filters = {}, page = 1) {
   };
   resolveGenres(params);
   const html = await get(`${BASE}/filter`, { params });
-  const result = parseSearch(html);
+  const result = parseSearchFromHtml(html);
   return {
     ...result,
     filters: { keyword: keyword || null, ...rest },
