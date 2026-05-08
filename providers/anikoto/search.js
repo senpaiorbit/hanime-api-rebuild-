@@ -1,5 +1,4 @@
 import { get } from '../../utils/http.js';
-import { withCache, TTL } from '../../utils/cache.js';
 import { parseSearchFromHtml } from './parser.js';
 import { BASE_URLS } from '../../constants/baseurl.js';
 
@@ -37,24 +36,18 @@ function resolveGenres(params) {
 }
 
 export async function query(q, page = 1, filters = {}) {
-  const cacheKey = `anikoto:search:${q}:${page}:${JSON.stringify(filters)}`;
-  return withCache(cacheKey, TTL.SEARCH, async () => {
-    const params = { keyword: q, page, ...filters };
-    resolveGenres(params);
-    const html = await get(`${BASE}/filter`, { params });
-    const result = parseSearchFromHtml(html);
-    return { ...result, searchQuery: q, searchFilters: filters };
-  });
+  const params = { keyword: q, page, ...filters };
+  resolveGenres(params);
+  const html = await get(`${BASE}/filter`, { params });
+  const result = parseSearchFromHtml(html);
+  return { ...result, searchQuery: q, searchFilters: filters };
 }
 
 export async function browse(filters = {}, page = 1) {
-  const cacheKey = `anikoto:browse:${page}:${JSON.stringify(filters)}`;
-  return withCache(cacheKey, TTL.LIST, async () => {
-    const { keyword, ...rest } = filters;
-    const params = { keyword: keyword || '', page, ...rest };
-    resolveGenres(params);
-    const html = await get(`${BASE}/filter`, { params });
-    const result = parseSearchFromHtml(html);
-    return { ...result, filters: { keyword: keyword || null, ...rest } };
-  });
+  const { keyword, ...rest } = filters;
+  const params = { keyword: keyword || '', page, ...rest };
+  resolveGenres(params);
+  const html = await get(`${BASE}/filter`, { params });
+  const result = parseSearchFromHtml(html);
+  return { ...result, filters: { keyword: keyword || null, ...rest } };
 }
