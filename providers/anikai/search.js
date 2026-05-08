@@ -1,4 +1,5 @@
 import { get } from '../../utils/http.js';
+import { withCache, TTL } from '../../utils/cache.js';
 import { parseSearch } from './parser.js';
 import { BASE_URLS } from '../../constants/baseurl.js';
 
@@ -78,15 +79,18 @@ function resolveGenres(params) {
 }
 
 export async function query(q, page = 1, filters = {}) {
-  const params = { keyword: q, page, ...filters };
-  resolveGenres(params);
-  const html = await get(`${BASE}/browser`, { params });
-  const result = parseSearch(html);
-  return {
-    ...result,
-    searchQuery: q,
-    searchFilters: filters,
-  };
+  const cacheKey = `anikai:search:${q}:${page}:${JSON.stringify(filters)}`;
+  return withCache(cacheKey, TTL.SEARCH, async () => {
+    const params = { keyword: q, page, ...filters };
+    resolveGenres(params);
+    const html = await get(`${BASE}/browser`, { params });
+    const result = parseSearch(html);
+    return {
+      ...result,
+      searchQuery: q,
+      searchFilters: filters,
+    };
+  });
 }
 
 // ─── Browse ───────────────────────────────────────────────────────────────────
@@ -105,17 +109,20 @@ export async function query(q, page = 1, filters = {}) {
 //   language[]→ sub | softsub | dub | subdub
 
 export async function browse(filters = {}, page = 1) {
-  const { keyword, ...rest } = filters;
-  const params = {
-    keyword: keyword || ' ',
-    page,
-    ...rest,
-  };
-  resolveGenres(params);
-  const html = await get(`${BASE}/browser`, { params });
-  const result = parseSearch(html);
-  return {
-    ...result,
-    filters: { keyword: keyword || null, ...rest },
-  };
+  const cacheKey = `anikai:browse:${page}:${JSON.stringify(filters)}`;
+  return withCache(cacheKey, TTL.LIST, async () => {
+    const { keyword, ...rest } = filters;
+    const params = {
+      keyword: keyword || ' ',
+      page,
+      ...rest,
+    };
+    resolveGenres(params);
+    const html = await get(`${BASE}/browser`, { params });
+    const result = parseSearch(html);
+    return {
+      ...result,
+      filters: { keyword: keyword || null, ...rest },
+    };
+  });
 }

@@ -1,4 +1,5 @@
 import { get } from '../../utils/http.js';
+import { withCache, TTL } from '../../utils/cache.js';
 import {
   parseAnime,
   parseHome,
@@ -13,39 +14,51 @@ import { BASE_URLS } from '../../constants/baseurl.js';
 const BASE = BASE_URLS.anikai;
 
 export async function getHome() {
-  const html = await get(`${BASE}/home`);
-  return parseHome(html);
+  return withCache('anikai:home', TTL.HOME, async () => {
+    const html = await get(`${BASE}/home`);
+    return parseHome(html);
+  });
 }
 
 export async function getIndex() {
-  const html = await get(`${BASE}/`);
-  return parseIndex(html);
+  return withCache('anikai:index', TTL.HOME, async () => {
+    const html = await get(`${BASE}/`);
+    return parseIndex(html);
+  });
 }
 
 export async function getById(id) {
-  const html = await get(`${BASE}/watch/${id}`);
-  return parseAnime(html);
+  return withCache(`anikai:anime:${id}`, TTL.ANIME, async () => {
+    const html = await get(`${BASE}/watch/${id}`);
+    return parseAnime(html);
+  });
 }
 
 export async function getAzList(sortOption = 'all', page = 1) {
-  const path = sortOption === 'all' ? '/az-list' : `/az-list/${sortOption}`;
-  const html = await get(`${BASE}${path}`, { params: { page } });
-  return parseAzList(html);
+  return withCache(`anikai:azlist:${sortOption}:${page}`, TTL.LIST, async () => {
+    const path = sortOption === 'all' ? '/az-list' : `/az-list/${sortOption}`;
+    const html = await get(`${BASE}${path}`, { params: { page } });
+    return parseAzList(html);
+  });
 }
 
 export async function getGenre(name, page = 1, sort = null) {
-  const params = { page };
-  if (sort) params.sort = sort;
-  const html = await get(`${BASE}/genres/${name}`, { params });
-  return parseListPage(html);
+  return withCache(`anikai:genre:${name}:${page}:${sort}`, TTL.LIST, async () => {
+    const params = { page };
+    if (sort) params.sort = sort;
+    const html = await get(`${BASE}/genres/${name}`, { params });
+    return parseListPage(html);
+  });
 }
 
 export async function getCategory(name, page = 1, sort = null) {
   // categories: movie, tv, ova, ona, special, new-releases, updates, ongoing, recent, completed, upcoming
-  const params = { page };
-  if (sort) params.sort = sort;
-  const html = await get(`${BASE}/${name}`, { params });
-  return parseListPage(html);
+  return withCache(`anikai:category:${name}:${page}:${sort}`, TTL.LIST, async () => {
+    const params = { page };
+    if (sort) params.sort = sort;
+    const html = await get(`${BASE}/${name}`, { params });
+    return parseListPage(html);
+  });
 }
 
 // ─── Type pages ───────────────────────────────────────────────────────────────
@@ -54,10 +67,12 @@ export async function getCategory(name, page = 1, sort = null) {
 // getType is a named alias so routes can be semantically distinct.
 
 export async function getType(name, page = 1, sort = null) {
-  const params = { page };
-  if (sort) params.sort = sort;
-  const html = await get(`${BASE}/${name}`, { params });
-  return parseListPage(html);
+  return withCache(`anikai:type:${name}:${page}:${sort}`, TTL.LIST, async () => {
+    const params = { page };
+    if (sort) params.sort = sort;
+    const html = await get(`${BASE}/${name}`, { params });
+    return parseListPage(html);
+  });
 }
 
 // ─── Nav menu ─────────────────────────────────────────────────────────────────
@@ -65,8 +80,10 @@ export async function getType(name, page = 1, sort = null) {
 // by fetching the home page and parsing its nav — available on every page.
 
 export async function getNavMenu(providerName = 'anikai') {
-  const html = await get(`${BASE}/home`);
-  return parseNavMenu(html, providerName);
+  return withCache(`anikai:nav:${providerName}`, TTL.NAV, async () => {
+    const html = await get(`${BASE}/home`);
+    return parseNavMenu(html, providerName);
+  });
 }
 
 // ─── Episodes ─────────────────────────────────────────────────────────────────
@@ -86,48 +103,52 @@ export async function getNavMenu(providerName = 'anikai') {
 // megaplay.buzz strategies (mal / ani) — no aniwatch ep-id required.
 
 export async function getEpisodes(id) {
-  const { anime } = await getById(id);
+  return withCache(`anikai:episodes:${id}`, TTL.EPISODE, async () => {
+    const { anime } = await getById(id);
 
-  const total   = anime.episodesTotal || anime.episodes.sub || anime.episodes.dub || 0;
-  const subCount = anime.episodes.sub || 0;
-  const dubCount = anime.episodes.dub || 0;
-  const malId   = anime.malId  || null;
-  const alId    = anime.alId   || null;
-  const name    = anime.name   || id;
+    const total    = anime.episodesTotal || anime.episodes.sub || anime.episodes.dub || 0;
+    const subCount = anime.episodes.sub || 0;
+    const dubCount = anime.episodes.dub || 0;
+    const malId    = anime.malId  || null;
+    const alId     = anime.alId   || null;
+    const name     = anime.name   || id;
 
-  if (!total) {
-    throw new Error(`No episode count available for "${id}".`);
-  }
+    if (!total) {
+      throw new Error(`No episode count available for "${id}".`);
+    }
 
-  const episodes = [];
+    const episodes = [];
 
-  for (let n = 1; n <= total; n++) {
-    const title   = `${name} - Episode ${n}`;
-    const hasSub  = n <= subCount;
-    const hasDub  = n <= dubCount;
-    const sources = buildEpisodeSources(n, malId, alId, hasSub, hasDub);
+    for (let n = 1; n <= total; n++) {
+      const title   = `${name} - Episode ${n}`;
+      const hasSub  = n <= subCount;
+      const hasDub  = n <= dubCount;
+      const sources = buildEpisodeSources(n, malId, alId, hasSub, hasDub);
 
-    episodes.push({ number: n, title, isFiller: false, hasSub, hasDub, sources });
-  }
+      episodes.push({ number: n, title, isFiller: false, hasSub, hasDub, sources });
+    }
 
-  return {
-    totalEpisodes: total,
-    malId,
-    alId,
-    episodes,
-  };
+    return {
+      totalEpisodes: total,
+      malId,
+      alId,
+      episodes,
+    };
+  });
 }
 
 // ─── Single episode detail ────────────────────────────────────────────────────
 
 export async function getEpisode(id, epNum) {
-  const { totalEpisodes, malId, alId, episodes } = await getEpisodes(id);
-  const n  = parseInt(epNum, 10);
-  const ep = episodes.find((e) => e.number === n);
+  return withCache(`anikai:episode:${id}:${epNum}`, TTL.EPISODE, async () => {
+    const { totalEpisodes, malId, alId, episodes } = await getEpisodes(id);
+    const n  = parseInt(epNum, 10);
+    const ep = episodes.find((e) => e.number === n);
 
-  if (!ep) {
-    throw new Error(`Episode ${n} not found for "${id}". Total episodes: ${totalEpisodes}.`);
-  }
+    if (!ep) {
+      throw new Error(`Episode ${n} not found for "${id}". Total episodes: ${totalEpisodes}.`);
+    }
 
-  return { malId, alId, episode: ep };
+    return { malId, alId, episode: ep };
+  });
 }
