@@ -2,12 +2,11 @@
   "version": 2,
   "functions": {
     "api/index.js": {
-      "runtime": "nodejs20.x",
       "memory": 1024,
       "maxDuration": 30
     },
     "providers/miruro/api.py": {
-      "runtime": "@vercel/python",
+      "runtime": "@vercel/python@3.0.7",
       "memory": 1024,
       "maxDuration": 30
     }
