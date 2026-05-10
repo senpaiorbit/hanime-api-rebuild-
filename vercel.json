@@ -14,7 +14,7 @@
 
   "routes": [
     {
-      "src": "^/providers/miruro/(.*)$",
+      "src": "^/api/v2/miruro/(.*)$",
       "dest": "providers/miruro/api.py"
     },
     {
