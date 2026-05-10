@@ -28,6 +28,9 @@ app.get('/', (c) => c.json({
     nav: '/api/v2/{provider}/nav',
     miruro: {
       note: 'Miruro routes served by the Python runtime — all responses use { success, data } format',
+      home: '/api/v2/miruro/home',
+      index: '/api/v2/miruro/index',
+      nav: '/api/v2/miruro/nav',
       search: '/api/v2/miruro/search?query=',
       suggestions: '/api/v2/miruro/suggestions?query=',
       filter: '/api/v2/miruro/filter',
